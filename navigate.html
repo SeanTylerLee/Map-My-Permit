@@ -126,9 +126,9 @@
     } else {
       alert("GPS not supported in this browser.");
     }
-  </script>
-  
-  
+    
+    
+      
   // === VOICE INSTRUCTIONS ===
 function speakRouteSteps(steps, delay = 5000) {
   if (!'speechSynthesis' in window) {
@@ -156,6 +156,11 @@ function speakRouteSteps(steps, delay = 5000) {
 if (routeText.length > 0) {
   setTimeout(() => speakRouteSteps(routeText), 2000); // small delay after page loads
 }
+    
+    
+  </script>
+  
+
   
   
 </body>
