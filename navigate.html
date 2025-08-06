@@ -5,30 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Navigate Route</title>
+  <title>Navigate</title>
+  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Leaflet and Mapbox -->
+  <!-- Mapbox & Leaflet -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <!-- Turf.js for distance calculations -->
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 </head>
 <body>
-  <header>Route Navigation</header>
+  <header>Map My Permit: Navigation</header>
 
   <main>
-    <section>
-      <h3>Route Preview</h3>
-      <div id="map" style="height: 300px; border-radius: 10px;"></div>
-    </section>
-
-    <section>
-      <h3>Steps</h3>
-      <ul id="stepList"></ul>
-    </section>
-
-    <section>
-      <button onclick="toggleVoice()">🔊 Toggle Voice</button>
-    </section>
+    <div id="map" style="height: calc(100vh - 150px);"></div>
+    <div id="status" style="padding: 10px;">Initializing...</div>
   </main>
 
   <nav class="bottom-nav">
@@ -38,94 +33,108 @@
   </nav>
 
   <script>
-    const accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+    const mapboxToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
 
-    const start = JSON.parse(localStorage.getItem('manualStart'));
-    const end = JSON.parse(localStorage.getItem('manualEnd'));
-    const steps = JSON.parse(localStorage.getItem('parsedSteps')) || [];
-
-    const map = L.map('map').setView([start.lat, start.lng], 7);
-
-    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${accessToken}`, {
-      attribution: '© Mapbox © OpenStreetMap',
+    // Initialize Leaflet map
+    const map = L.map('map').setView([43.0, -105.5], 7);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${mapboxToken}`, {
       tileSize: 512,
-      zoomOffset: -1
+      zoomOffset: -1,
+      attribution: '© Mapbox © OpenStreetMap'
     }).addTo(map);
 
-    let markers = [];
-    let polyline;
-    let voiceEnabled = false;
+    const statusDiv = document.getElementById('status');
 
-    // Display step list
-    const stepList = document.getElementById('stepList');
-    steps.forEach(step => {
-      const li = document.createElement('li');
-      li.textContent = step;
-      stepList.appendChild(li);
-    });
+    // Load start/end points and parsed steps
+    const start = JSON.parse(localStorage.getItem("manualStart"));
+    const end = JSON.parse(localStorage.getItem("manualEnd"));
+    const steps = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
 
-    // Speak instructions
-    function speak(text) {
-      if (!voiceEnabled) return;
-      const utter = new SpeechSynthesisUtterance(text);
-      speechSynthesis.speak(utter);
+    if (!start || !end || steps.length === 0) {
+      statusDiv.innerText = "Missing start/end or parsed steps. Return and try again.";
+      throw new Error("Required data not found.");
     }
 
-    function toggleVoice() {
-      voiceEnabled = !voiceEnabled;
-      alert(`Voice ${voiceEnabled ? "enabled" : "disabled"}`);
-    }
-
-    // Geocode step text → coordinates
-    async function geocode(text) {
-      const response = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(text)}.json?access_token=${accessToken}&limit=1`);
-      const data = await response.json();
-      if (data.features && data.features.length) {
-        const [lng, lat] = data.features[0].center;
-        return { lat, lng };
+    // Geocode each step to get coordinates
+    async function geocodeStep(step) {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(step)}.json?access_token=${mapboxToken}&limit=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features && data.features.length > 0) {
+        return data.features[0].center.reverse(); // [lat, lng]
       }
       return null;
     }
 
-    async function buildRoute() {
-      const routePoints = [];
+    async function buildFullRoute() {
+      statusDiv.innerText = "Building route...";
+      const waypointCoords = [];
 
-      // Add start manually
-      routePoints.push(start);
-
-      // Geocode steps
-      for (let step of steps) {
-        const coord = await geocode(step);
-        if (coord) {
-          routePoints.push(coord);
-        } else {
-          console.warn('Failed to geocode step:', step);
-        }
+      for (const step of steps) {
+        const coords = await geocodeStep(step);
+        if (coords) waypointCoords.push(coords);
       }
 
-      // Add end manually
-      routePoints.push(end);
+      const fullRoute = [start, ...waypointCoords, end];
+      const coordString = fullRoute.map(p => `${p[1]},${p[0]}`).join(';');
 
-      // Plot markers
-      routePoints.forEach((pt, i) => {
-        const m = L.marker([pt.lat, pt.lng]).addTo(map).bindPopup(i === 0 ? "Start" : i === routePoints.length - 1 ? "End" : `Step ${i}`).openPopup();
-        markers.push(m);
-      });
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordString}?geometries=geojson&access_token=${mapboxToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
 
-      // Draw route line
-      const latlngs = routePoints.map(pt => [pt.lat, pt.lng]);
-      polyline = L.polyline(latlngs, { color: 'blue', weight: 5 }).addTo(map);
+      if (!data.routes || !data.routes[0]) {
+        statusDiv.innerText = "Mapbox couldn't build route.";
+        return;
+      }
+
+      const route = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      const polyline = L.polyline(route, { color: 'blue' }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      // Optional: voice preview
-      if (voiceEnabled) {
-        for (let i = 1; i < steps.length; i++) {
-          setTimeout(() => speak(steps[i]), i * 3000);
-        }
-      }
+      // Start navigation
+      startVoiceNavigation(route);
     }
 
-    buildRoute();
+    function startVoiceNavigation(routeCoords) {
+      if (!navigator.geolocation) {
+        statusDiv.innerText = "GPS not supported.";
+        return;
+      }
+
+      let currentStep = 0;
+      const spoken = new Set();
+
+      function say(text) {
+        if (spoken.has(text)) return;
+        spoken.add(text);
+        const msg = new SpeechSynthesisUtterance(text);
+        speechSynthesis.speak(msg);
+      }
+
+      function checkProximity(position) {
+        const userLoc = [position.coords.latitude, position.coords.longitude];
+        for (let i = currentStep; i < routeCoords.length; i++) {
+          const dist = turf.distance(turf.point(userLoc), turf.point(routeCoords[i]), { units: 'miles' });
+          if (dist < 0.05) {
+            say(`Approaching waypoint ${i + 1}`);
+            currentStep = i + 1;
+            break;
+          }
+        }
+      }
+
+      navigator.geolocation.watchPosition(checkProximity, err => {
+        statusDiv.innerText = "GPS error: " + err.message;
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      });
+
+      statusDiv.innerText = "Navigation started...";
+    }
+
+    buildFullRoute();
   </script>
 </body>
 </html>

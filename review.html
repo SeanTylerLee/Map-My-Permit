@@ -1,129 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- iOS app setup -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Review & Build Route</title>
+  <title>Review Permit</title>
+  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- Leaflet + Mapbox tiles -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
 
-  <header>Review Permit Route</header>
+  <!-- Page Header -->
+  <header>Review Permit</header>
 
-  <main>
-    <!-- Raw permit text from OCR -->
+  <!-- Main Content -->
+  <main class="container">
+    <!-- Full OCR Text Area -->
     <section>
-      <h3>Permit Text</h3>
-      <textarea id="permitText" placeholder="Loading OCR..." readonly></textarea>
+      <h2>Permit Text</h2>
+      <textarea id="permitText" placeholder="Permit OCR text..."></textarea>
     </section>
 
-    <!-- Extracted AI route steps -->
+    <!-- Extracted Directions -->
     <section>
-      <h3>Extracted Route Steps</h3>
-      <pre id="routeOutput">Extracting...</pre>
+      <h3>Parsed Directions</h3>
+      <pre id="routePreview">Parsing...</pre>
     </section>
 
-    <!-- Interactive map -->
-    <section>
-      <h3>Select Start & End Points</h3>
-      <p>Tap on the map to set start and end points for this route.</p>
-      <button onclick="setStart()">Set Start</button>
-      <button onclick="setEnd()">Set End</button>
-      <div id="map" style="height: 300px; border-radius: 10px; margin-top: 10px;"></div>
-    </section>
-
-    <!-- Proceed to navigation -->
-    <section>
-      <button onclick="saveRouteAndProceed()">Navigate Route</button>
-    </section>
+    <!-- Continue to Navigation -->
+    <button id="goToMap">Continue to Navigation</button>
   </main>
 
-  <!-- Bottom nav -->
+  <!-- Bottom iOS-style nav -->
   <nav class="bottom-nav">
     <button onclick="history.back()">🔙 Back</button>
     <button onclick="location.href='index.html'">🏠 Home</button>
     <button onclick="location.href='settings.html'">⚙️ Settings</button>
   </nav>
 
+  <!-- Route Parsing Script -->
   <script>
-    let rawText = localStorage.getItem('ocrText') || '';
-    let steps = [];
-    let startMarker = null, endMarker = null;
-    let selectingStart = false, selectingEnd = false;
+    const permitTextEl = document.getElementById('permitText');
+    const routePreview = document.getElementById('routePreview');
 
-    const permitText = document.getElementById('permitText');
-    const routeOutput = document.getElementById('routeOutput');
+    // Load saved OCR text from index.html
+    const rawText = localStorage.getItem('ocrText') || '';
+    permitTextEl.value = rawText;
 
-    permitText.value = rawText;
-
-    // Try to extract directions (basic AI filter)
-    function extractSteps(text) {
-      const lines = text.split('\n').map(l => l.trim());
+    // Extract likely routing directions from permit text
+    function extractRouteSteps(text) {
+      const lines = text.split('\n');
       const routeLines = lines.filter(line =>
-        line.match(/\b(I|US|SR|HWY|Hwy|FM|WY|CR|Loop|Route|Exit)[\s\-]?\d+/i) ||
-        line.toLowerCase().includes('take') ||
-        line.toLowerCase().includes('exit') ||
-        line.toLowerCase().includes('merge') ||
-        line.toLowerCase().includes('continue') ||
-        line.toLowerCase().includes('turn')
+        /\b(US|I|SR|HWY|Hwy|FM|WY|CR|BUS|ALT|Loop)[- ]?\d+/i.test(line) ||
+        /\b(merge|continue|exit|ramp|follow|take|bear|turn|toward|onto)\b/i.test(line)
       );
-      return routeLines.filter(Boolean);
+      return routeLines.map(l => l.trim()).filter(Boolean);
     }
 
-    steps = extractSteps(rawText);
-    routeOutput.textContent = steps.length ? steps.join('\n') : '⚠️ No permit directions found.';
+    const routeSteps = extractRouteSteps(rawText);
+    routePreview.textContent = routeSteps.length
+      ? routeSteps.join('\n')
+      : 'No route directions found. You can edit the permit text above to improve detection.';
 
-    // Store filtered steps in localStorage
-    localStorage.setItem('parsedSteps', JSON.stringify(steps));
+    // Save cleaned route for next step
+    localStorage.setItem('parsedRoute', JSON.stringify(routeSteps));
 
-    // Leaflet map setup
-    const map = L.map('map').setView([43.0, -105.0], 6);
-    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA`, {
-      attribution: '© Mapbox © OpenStreetMap',
-      tileSize: 512,
-      zoomOffset: -1
-    }).addTo(map);
-
-    // Set start and end interaction
-    function setStart() {
-      selectingStart = true;
-      selectingEnd = false;
-    }
-
-    function setEnd() {
-      selectingEnd = true;
-      selectingStart = false;
-    }
-
-    map.on('click', (e) => {
-      const { lat, lng } = e.latlng;
-      if (selectingStart) {
-        if (startMarker) map.removeLayer(startMarker);
-        startMarker = L.marker([lat, lng]).addTo(map).bindPopup("Start").openPopup();
-        localStorage.setItem('manualStart', JSON.stringify({ lat, lng }));
-        selectingStart = false;
-      } else if (selectingEnd) {
-        if (endMarker) map.removeLayer(endMarker);
-        endMarker = L.marker([lat, lng]).addTo(map).bindPopup("End").openPopup();
-        localStorage.setItem('manualEnd', JSON.stringify({ lat, lng }));
-        selectingEnd = false;
-      }
-    });
-
-    function saveRouteAndProceed() {
-      if (!startMarker || !endMarker) {
-        alert("Please set both start and end points first.");
+    // Button to move forward
+    document.getElementById('goToMap').onclick = () => {
+      if (!routeSteps.length) {
+        alert('No route found. Try editing the permit text or re-uploading.');
         return;
       }
-      // Proceed to navigation screen
-      location.href = 'navigate.html';
-    }
+      window.location.href = 'navigate.html';
+    };
   </script>
+
 </body>
 </html>
