@@ -53,9 +53,7 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
-    const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
     const instructionBox = document.getElementById("routeInstructions");
-
     let gpsCentering = true;
 
     document.getElementById('viewRouteBtn').addEventListener('click', () => {
@@ -76,28 +74,16 @@
       attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
     }).addTo(map);
 
-    const waypoints = [];
+    async function buildRoute() {
+      const start = JSON.parse(localStorage.getItem('routeStart'));
+      const end = JSON.parse(localStorage.getItem('routeEnd'));
 
-    const geocodeStep = async (step) => {
-      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(step)}.json?access_token=${MAPBOX_TOKEN}`);
-      const data = await res.json();
-      if (data.features && data.features.length > 0) {
-        const [lon, lat] = data.features[0].center;
-        waypoints.push({ lat, lon, instruction: step });
-      }
-    };
-
-    const buildRoute = async () => {
-      for (const step of routeText) {
-        await geocodeStep(step);
-      }
-
-      if (waypoints.length < 2) {
-        alert("Could not geocode enough route points. Try editing permit text.");
+      if (!start || !end) {
+        alert("Start/end points not set. Go back and select them.");
         return;
       }
 
-      const coords = waypoints.map(wp => `${wp.lon},${wp.lat}`).join(';');
+      const coords = `${start.lng},${start.lat};${end.lng},${end.lat}`;
       const directionsURL = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
       const routeRes = await fetch(directionsURL);
       const routeData = await routeRes.json();
@@ -115,15 +101,14 @@
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      waypoints.forEach(({ lat, lon }) => {
-        L.circleMarker([lat, lon], {
-          radius: 5,
-          color: 'red',
-          fillColor: 'red',
-          fillOpacity: 0.9
-        }).addTo(map);
-      });
+      // Show steps
+      instructionBox.textContent = steps.join('\n');
 
+      // Start/end markers
+      L.marker([start.lat, start.lng]).addTo(map).bindPopup("Start").openPopup();
+      L.marker([end.lat, end.lng]).addTo(map).bindPopup("End");
+
+      // Voice
       let spokenSet = new Set();
       function speak(text) {
         if (!('speechSynthesis' in window)) return;
@@ -131,8 +116,7 @@
         speechSynthesis.speak(utter);
       }
 
-      instructionBox.textContent = steps.join('\n');
-
+      // GPS tracking + speaking
       if ('geolocation' in navigator) {
         navigator.geolocation.watchPosition(
           (pos) => {
@@ -151,10 +135,11 @@
             }
 
             const userLoc = L.latLng(latitude, longitude);
-            waypoints.forEach((wp, i) => {
-              const dist = userLoc.distanceTo([wp.lat, wp.lon]);
+            route.legs[0].steps.forEach((step, i) => {
+              const stepLoc = L.latLng(step.maneuver.location[1], step.maneuver.location[0]);
+              const dist = userLoc.distanceTo(stepLoc);
               if (dist < 300 && !spokenSet.has(i)) {
-                speak(wp.instruction);
+                speak(step.maneuver.instruction);
                 spokenSet.add(i);
               }
             });
@@ -165,7 +150,7 @@
       } else {
         alert("GPS not supported.");
       }
-    };
+    }
 
     buildRoute();
   </script>
