@@ -76,7 +76,6 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
-
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -108,51 +107,55 @@
 
     async function buildRoute() {
       const debugLogs = [];
+      const waypoints = [];
+
       const validSegments = routeSegments.filter(seg => isValidRoadName(seg.road));
       if (validSegments.length === 0) {
-        debugLogs.push("❌ No valid segments found.");
+        debugLogs.push("❌ No valid highway segments found.");
         debugBox.textContent = debugLogs.join("\n");
         return;
       }
-
-      const waypoints = [];
 
       for (const [i, seg] of validSegments.entries()) {
         const fromCoord = await geocodePlace(seg.from);
         const toCoord = await geocodePlace(seg.to);
 
-        if (fromCoord && toCoord) {
-          // Try building a test route for this pair only
-          const testUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${fromCoord.lng},${fromCoord.lat};${toCoord.lng},${toCoord.lat}?access_token=${MAPBOX_TOKEN}`;
-          const testRes = await fetch(testUrl);
-          const testData = await testRes.json();
-
-          if (!testData.routes || testData.routes.length === 0) {
-            debugLogs.push(`❌ Skipping ${seg.road}: ${seg.from} → ${seg.to} (Mapbox couldn't route)`);
-            break;
-          }
-
-          waypoints.push(fromCoord, toCoord);
-          debugLogs.push(`✅ ${seg.road}: ${seg.from} → ${seg.to}\n    From: (${fromCoord.lat.toFixed(4)}, ${fromCoord.lng.toFixed(4)})\n    To:   (${toCoord.lat.toFixed(4)}, ${toCoord.lng.toFixed(4)})`);
-        } else {
-          debugLogs.push(`❌ Geocode failed: ${seg.road}: ${seg.from} → ${seg.to}`);
-          break;
+        if (!fromCoord || !toCoord) {
+          debugLogs.push(`❌ Geocode failed: ${seg.road} -- ${seg.from} → ${seg.to}`);
+          continue;
         }
+
+        // Test routing between the pair
+        const coords = `${fromCoord.lng},${fromCoord.lat};${toCoord.lng},${toCoord.lat}`;
+        const testUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${MAPBOX_TOKEN}`;
+        const testRes = await fetch(testUrl);
+        const testData = await testRes.json();
+
+        if (!testData.routes || testData.routes.length === 0) {
+          debugLogs.push(`❌ Routing failed: ${seg.road} -- ${seg.from} → ${seg.to}`);
+          continue;
+        }
+
+        waypoints.push(fromCoord, toCoord);
+        const miles = (testData.routes[0].distance / 1609.34).toFixed(1);
+        const mins = (testData.routes[0].duration / 60).toFixed(0);
+        debugLogs.push(`✅ ${seg.road}: ${seg.from} → ${seg.to} -- ${miles} mi / ${mins} min`);
       }
 
       if (waypoints.length < 2) {
-        debugLogs.push("❌ Not enough valid geocoded waypoints to build route.");
+        debugLogs.push("❌ Not enough confirmed-good segments to build route.");
         debugBox.textContent = debugLogs.join("\n");
         return;
       }
 
-      const coords = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
-      const routeRes = await fetch(url);
+      // Final route using all confirmed segments
+      const finalCoords = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
+      const routeUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${finalCoords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
+      const routeRes = await fetch(routeUrl);
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        debugLogs.push("❌ Mapbox couldn't build route from remaining waypoints.");
+        debugLogs.push("❌ Final route build failed from valid segments.");
         debugBox.textContent = debugLogs.join("\n");
         return;
       }
@@ -160,7 +163,9 @@
       const route = routeData.routes[0];
       const geometry = route.geometry.coordinates;
       const steps = route.legs.flatMap(leg => leg.steps.map(s => s.maneuver.instruction));
+
       instructionBox.textContent = steps.join('\n');
+      debugBox.textContent = debugLogs.join('\n');
 
       const latLngs = geometry.map(([lon, lat]) => [lat, lon]);
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
@@ -176,8 +181,7 @@
         }).addTo(map).bindPopup(label);
       });
 
-      debugBox.textContent = debugLogs.join("\n");
-
+      // Voice navigation
       let spokenSet = new Set();
       function speak(text) {
         if (!('speechSynthesis' in window)) return;
@@ -215,8 +219,6 @@
           (err) => console.warn("GPS error:", err),
           { enableHighAccuracy: true, maximumAge: 5000 }
         );
-      } else {
-        alert("GPS not supported.");
       }
     }
 

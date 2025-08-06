@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test Permit Segments</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1rem;
+    }
+
+    #results {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      margin-top: 1rem;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    button {
+      background: #007aff;
+      color: white;
+      font-size: 16px;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      width: 100%;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h2>Segment Tester</h2>
+  <p>This tool tests each parsed permit route step (from → to) using Mapbox routing.</p>
+  <button onclick="testAllSegments()">Test Segments</button>
+
+  <div id="results">Results will appear here...</div>
+
+  <script>
+    const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
+    const routeSegments = JSON.parse(localStorage.getItem("parsedRouteSegments") || "[]");
+    const state = localStorage.getItem("routeState") || "";
+    const bbox = {
+      "Wyoming": "-111.05,40.99,-104.05,45.00",
+      "Texas": "-106.65,25.84,-93.51,36.5",
+      "Oklahoma": "-103.0,33.6,-94.4,37.0",
+      "Kansas": "-102.1,36.9,-94.6,40.0",
+      "Colorado": "-109.1,36.9,-102.0,41.0",
+      "Nebraska": "-104.05,39.99,-95.3,43.0"
+    }[state] || "";
+
+    const resultBox = document.getElementById("results");
+
+    async function geocode(label) {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(label + ", " + state)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features && data.features[0]) {
+        const [lon, lat] = data.features[0].center;
+        return { lat, lng: lon };
+      }
+      return null;
+    }
+
+    async function testAllSegments() {
+      resultBox.textContent = "Running tests...\n";
+      for (const seg of routeSegments) {
+        const from = await geocode(seg.from);
+        const to = await geocode(seg.to);
+
+        if (!from || !to) {
+          resultBox.textContent += `❌ ${seg.road}: ${seg.from} → ${seg.to} -- geocode failed\n`;
+          continue;
+        }
+
+        const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${MAPBOX_TOKEN}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!data.routes || data.routes.length === 0) {
+          resultBox.textContent += `❌ ${seg.road}: ${seg.from} → ${seg.to} -- routing failed\n`;
+        } else {
+          const route = data.routes[0];
+          const miles = (route.distance / 1609.34).toFixed(1);
+          const mins = (route.duration / 60).toFixed(0);
+          resultBox.textContent += `✅ ${seg.road}: ${seg.from} → ${seg.to} -- ${miles} mi / ${mins} min\n`;
+        }
+      }
+    }
+  </script>
+</body>
+</html>
