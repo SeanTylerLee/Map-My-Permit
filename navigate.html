@@ -33,132 +33,100 @@
     <div id="routeInstructions">Route instructions will appear here...</div>
   </main>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
-    // Load route text
-    const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
-    document.getElementById("routeInstructions").textContent = routeText.join('\n');
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
+  document.getElementById("routeInstructions").textContent = routeText.join('\n');
 
-    // Map setup
-    const map = L.map('map').setView([35.5, -97.5], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(map);
+  const map = L.map('map').setView([35.5, -97.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(map);
 
-    // Simulated geocode (replace with real API later)
-    const fakePoints = {
-      "US-69": [35.435, -94.396],
-      "I-40": [35.4676, -97.5164],
-      "I-44": [36.154, -95.9928],
-      "US-75": [36.13, -95.9],
-      "OK-51": [36.1, -96.0],
-      "US-412": [36.13, -95.8]
-    };
+  const fakePoints = {
+    "US-69": [35.435, -94.396],
+    "I-40": [35.4676, -97.5164],
+    "I-44": [36.154, -95.9928],
+    "US-75": [36.13, -95.9],
+    "OK-51": [36.1, -96.0],
+    "US-412": [36.13, -95.8]
+  };
 
-    async function fakeGeocode(routeLines) {
-      const points = [];
-
-      for (const line of routeLines) {
-        for (const key in fakePoints) {
-          if (line.includes(key)) {
-            points.push(fakePoints[key]);
-            break;
-          }
+  async function fakeGeocode(routeLines) {
+    const points = [];
+    for (const line of routeLines) {
+      for (const key in fakePoints) {
+        if (line.includes(key)) {
+          points.push({ coords: fakePoints[key], instruction: line });
+          break;
         }
       }
-
-      // If empty, provide a fallback route
-      if (points.length < 2) {
-        points.push([35.435, -94.396]);
-        points.push([35.4676, -97.5164]);
-      }
-
-      return points;
     }
-
-    // Draw route on map
-    fakeGeocode(routeText).then(points => {
-      if (points.length > 0) {
-        const routeLine = L.polyline(points, { color: 'blue', weight: 5 }).addTo(map);
-        map.fitBounds(routeLine.getBounds());
-
-        points.forEach(([lat, lon]) => {
-          L.circleMarker([lat, lon], {
-            radius: 5,
-            color: 'red',
-            fillColor: 'red',
-            fillOpacity: 0.9
-          }).addTo(map);
-        });
-      }
-    });
-
-    // GPS tracking
-    if ("geolocation" in navigator) {
-      navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-
-          // Remove existing GPS marker if needed
-          if (window.gpsMarker) {
-            map.removeLayer(window.gpsMarker);
-          }
-
-          // Place new GPS marker
-          window.gpsMarker = L.circleMarker([latitude, longitude], {
-            radius: 6,
-            color: 'green',
-            fillColor: 'lime',
-            fillOpacity: 1
-          }).addTo(map);
-
-          // Center map on GPS position
-          map.setView([latitude, longitude], 15);
-        },
-        (err) => {
-          console.warn("GPS error:", err);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5000
-        }
-      );
-    } else {
-      alert("GPS not supported in this browser.");
+    if (points.length < 2) {
+      points.push({ coords: [35.435, -94.396], instruction: "Start" });
+      points.push({ coords: [35.4676, -97.5164], instruction: "End" });
     }
-    
-    
-      
-  // === VOICE INSTRUCTIONS ===
-function speakRouteSteps(steps, delay = 5000) {
-  if (!'speechSynthesis' in window) {
-    alert("This browser doesn't support speech synthesis.");
-    return;
+    return points;
   }
 
-  let index = 0;
-
-  function speakNext() {
-    if (index >= steps.length) return;
-
-    const utterance = new SpeechSynthesisUtterance(steps[index]);
+  function speak(text) {
+    if (!'speechSynthesis' in window) return;
+    const utterance = new SpeechSynthesisUtterance(text);
     speechSynthesis.speak(utterance);
-    index++;
-
-    // Speak next after delay
-    setTimeout(speakNext, delay);
   }
 
-  speakNext();
-}
+  // GPS + Voice Guidance Logic
+  fakeGeocode(routeText).then(waypoints => {
+    if (waypoints.length > 0) {
+      const latLngs = waypoints.map(w => w.coords);
+      const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
+      map.fitBounds(polyline.getBounds());
 
-// Trigger speech after route loads
-if (routeText.length > 0) {
-  setTimeout(() => speakRouteSteps(routeText), 2000); // small delay after page loads
-}
-    
-    
-  </script>
+      waypoints.forEach(w =>
+        L.circleMarker(w.coords, { radius: 5, color: 'red', fillColor: 'red', fillOpacity: 0.9 }).addTo(map)
+      );
+
+      let currentIndex = 0;
+      const spoken = new Set();
+
+      if ("geolocation" in navigator) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+
+            // Place GPS dot
+            if (window.gpsMarker) map.removeLayer(window.gpsMarker);
+            window.gpsMarker = L.circleMarker([latitude, longitude], {
+              radius: 6,
+              color: 'green',
+              fillColor: 'lime',
+              fillOpacity: 1
+            }).addTo(map);
+            map.setView([latitude, longitude], 15);
+
+            const userLoc = L.latLng(latitude, longitude);
+
+            for (let i = currentIndex; i < waypoints.length; i++) {
+              const wp = L.latLng(waypoints[i].coords);
+              const dist = userLoc.distanceTo(wp); // meters
+
+              if (dist < 500 && !spoken.has(i)) {
+                speak(waypoints[i].instruction);
+                spoken.add(i);
+                currentIndex = i + 1;
+                break;
+              }
+            }
+          },
+          (err) => console.warn("GPS error:", err),
+          { enableHighAccuracy: true, maximumAge: 5000 }
+        );
+      } else {
+        alert("GPS not supported in this browser.");
+      }
+    }
+  });
+</script>
   
 
   
