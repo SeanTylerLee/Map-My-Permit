@@ -57,6 +57,19 @@
     const selectedState = localStorage.getItem("routeState") || "";
     const instructionBox = document.getElementById("routeInstructions");
 
+    const stateBBoxes = {
+      "Wyoming": "-111.05,40.99,-104.05,45.00",
+      "Texas": "-106.65,25.84,-93.51,36.5",
+      "Oklahoma": "-103.0,33.6,-94.4,37.0",
+      "Kansas": "-102.1,36.9,-94.6,40.0",
+      "Colorado": "-109.1,36.9,-102.0,41.0",
+      "Nebraska": "-104.05,39.99,-95.3,43.0",
+      "Missouri": "-95.8,35.9,-89.1,40.6",
+      "Iowa": "-96.6,40.4,-90.1,43.5",
+      "Minnesota": "-97.2,43.5,-89.5,49.4",
+      // Add more states as needed
+    };
+
     let gpsCentering = true;
     document.getElementById('viewRouteBtn').addEventListener('click', () => {
       gpsCentering = false;
@@ -77,8 +90,9 @@
     }).addTo(map);
 
     async function geocodeInstruction(step) {
+      const bbox = stateBBoxes[selectedState] || "";
       const query = `${step}, ${selectedState}`;
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.features && data.features.length > 0) {
@@ -98,7 +112,6 @@
       }
 
       const stepPoints = [];
-
       for (const step of parsedSteps) {
         const point = await geocodeInstruction(step);
         if (point) stepPoints.push(point);
