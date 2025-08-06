@@ -81,29 +81,31 @@
     function extractSegments() {
       const lines = permitTextArea.value.split('\n');
       const segments = [];
-
       let lastTo = "Origin";
 
       lines.forEach(line => {
-        // Match lines like "22.33 US-20 Turn right onto LUSK PORT OF ENTRY"
-        const match = line.match(/^ *([\d.]+)? *([A-Z0-9\-\/\[\] ]+)? +(.+)$/i);
+        const clean = line.replace(/\s+/g, ' ').trim();
+
+        const match = clean.match(/^(\d+(\.\d+)?\s+)?([A-Z0-9\-\[\]/]+)?\s+(Turn|Merge|Head|Take|Continue|Exit|Final|Follow)\s+(.*)/i);
         if (!match) return;
 
-        const [_, miles, road, instructions] = match;
+        const rawRoad = match[3] || '';
+        const instruction = match[5] || '';
+        const cleanedRoad = rawRoad.replace(/[\[\]]/g, '').trim();
 
-        if (!road || !instructions) return;
+        const toMatch = instruction.match(/(?:onto|to|toward|at|exit to)\s+(.+)/i);
+        const to = toMatch ? toMatch[1].replace(/[\[\],]/g, '').trim() : instruction.trim();
 
-        // Extract first clear location from instruction
-        const toMatch = instructions.match(/(?:onto|to|toward|exit to|continue to)\s+(.*)/i);
-        const to = toMatch ? toMatch[1].replace(/[\[\]\/]/g, '').trim() : instructions.trim();
+        let road = cleanedRoad;
+        if (!road && instruction.match(/(I|US|WY|SR|FM|CR|BUS)[-\s]?\d+/i)) {
+          const found = instruction.match(/(I|US|WY|SR|FM|CR|BUS)[-\s]?\d+/gi);
+          road = found ? found[0].trim() : '';
+        }
 
-        segments.push({
-          road: road.replace(/[\[\]]/g, '').trim(),
-          from: lastTo,
-          to
-        });
-
-        lastTo = to;
+        if (road && to) {
+          segments.push({ road, from: lastTo, to });
+          lastTo = to;
+        }
       });
 
       localStorage.setItem("parsedRouteSegments", JSON.stringify(segments));
