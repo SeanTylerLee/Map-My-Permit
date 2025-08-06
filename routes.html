@@ -6,35 +6,28 @@
   <title>Review & Extract Route</title>
   <link rel="stylesheet" href="styles.css" />
   <style>
-    textarea {
+    textarea, select, button {
       width: 100%;
-      min-height: 200px;
-      margin-top: 1rem;
-      padding: 10px;
+      margin-top: 10px;
+      padding: 12px;
       font-size: 16px;
-      border-radius: 10px;
+      border-radius: 8px;
       border: 1px solid #ccc;
-      font-family: monospace;
     }
 
     button {
-      margin-top: 1rem;
-      padding: 12px;
-      width: 100%;
       background-color: #007aff;
       color: white;
       border: none;
-      border-radius: 10px;
-      font-size: 16px;
     }
 
     pre {
       background: #eee;
       padding: 10px;
-      margin-top: 1rem;
       border-radius: 8px;
       font-family: monospace;
       white-space: pre-wrap;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -47,6 +40,9 @@
     <label for="permitTextArea">Permit Text:</label>
     <textarea id="permitTextArea" placeholder="Permit OCR text..."></textarea>
 
+    <label for="stateSelect">Permit State:</label>
+    <select id="stateSelect"></select>
+
     <button onclick="extractRoute()">Extract Route Instructions</button>
 
     <pre id="routeOutput">Route instructions will appear here...</pre>
@@ -57,15 +53,44 @@
   <script>
     const permitTextArea = document.getElementById('permitTextArea');
     const routeOutput = document.getElementById('routeOutput');
+    const stateSelect = document.getElementById('stateSelect');
 
-    // Load permit text from localStorage
+    const states = [
+      "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida",
+      "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine",
+      "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+      "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+      "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas",
+      "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"
+    ];
+
+    // Populate state dropdown
+    states.forEach(state => {
+      const option = document.createElement('option');
+      option.value = state;
+      option.textContent = state;
+      stateSelect.appendChild(option);
+    });
+
+    // Load permit text
     const savedText = localStorage.getItem('permitText');
-    if (savedText) permitTextArea.value = savedText;
+    if (savedText) {
+      permitTextArea.value = savedText;
+      guessState(savedText);
+    }
+
+    function guessState(text) {
+      const found = states.find(state => text.toLowerCase().includes(state.toLowerCase()));
+      if (found) {
+        stateSelect.value = found;
+      }
+    }
 
     function extractRoute() {
       const text = permitTextArea.value;
-      const lines = text.split('\n');
+      guessState(text);
 
+      const lines = text.split('\n');
       const routeLines = lines.filter(line =>
         line.match(/\b(US|I|SR|HWY|Hwy|FM)-?\s?\d+/i) ||
         line.toLowerCase().includes('take') ||
@@ -78,6 +103,7 @@
       routeOutput.textContent = cleaned.join('\n');
 
       localStorage.setItem('parsedRoute', JSON.stringify(cleaned));
+      localStorage.setItem('routeState', stateSelect.value);
     }
   </script>
 </body>

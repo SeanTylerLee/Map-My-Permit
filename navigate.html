@@ -54,6 +54,7 @@
   <script>
     const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
     const parsedSteps = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
+    const selectedState = localStorage.getItem("routeState") || "";
     const instructionBox = document.getElementById("routeInstructions");
 
     let gpsCentering = true;
@@ -61,6 +62,7 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
+
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -75,7 +77,9 @@
     }).addTo(map);
 
     async function geocodeInstruction(step) {
-      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(step)}.json?access_token=${MAPBOX_TOKEN}`);
+      const query = `${step}, ${selectedState}`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (data.features && data.features.length > 0) {
         const [lon, lat] = data.features[0].center;
@@ -120,9 +124,9 @@
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      // Show markers
       L.marker([start.lat, start.lng]).addTo(map).bindPopup("Start").openPopup();
       L.marker([end.lat, end.lng]).addTo(map).bindPopup("End");
+
       stepPoints.forEach(({ lat, lng }) => {
         L.circleMarker([lat, lng], {
           radius: 4,
@@ -132,10 +136,8 @@
         }).addTo(map);
       });
 
-      // Display instructions
       instructionBox.textContent = steps.join('\n');
 
-      // Voice
       let spokenSet = new Set();
       function speak(text) {
         if (!('speechSynthesis' in window)) return;
