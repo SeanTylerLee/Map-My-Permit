@@ -3,8 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Permit Upload</title>
+  <title>Upload Permit</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background: #000;
+      color: #fff;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .container {
+      padding: 1rem;
+    }
+
+    input[type="file"],
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      background: #007aff;
+      color: white;
+    }
+
+    pre {
+      background: #eee;
+      padding: 1rem;
+      white-space: pre-wrap;
+      margin-top: 10px;
+      border-radius: 8px;
+    }
+
+    #imagePreview img {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+      border-radius: 8px;
+      max-height: 300px;
+    }
+
+    #cropBtn {
+      background-color: #ff9500;
+    }
+
+    #clearBtn {
+      background-color: #ff3b30;
+    }
+  </style>
 </head>
 <body>
   <header>
@@ -12,14 +68,103 @@
   </header>
 
   <main class="container">
-    <input type="file" accept="image/*" capture="environment" id="imageInput">
-    <div id="imagePreview"></div>
+    <input type="file" accept="image/*" id="imageInput" />
+
+    <div id="imagePreview">
+      <img id="previewImg" style="display:none;" />
+    </div>
+
+    <button id="cropBtn">Crop & Use Image</button>
     <button id="processBtn">Extract Text</button>
+    <button id="clearBtn">🗑️ Clear All Permits</button>
+
     <pre id="ocrOutput">Permit text will appear here...</pre>
-    <button id="nextBtn" onclick="window.location.href='routes.html'">Next: Build Route</button>
+
+    <button onclick="window.location.href='routes.html'">Next: Build Route</button>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-  <script src="scripts/ocr.js"></script>
+  <script src="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.js"></script>
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const previewImg = document.getElementById('previewImg');
+    const processBtn = document.getElementById('processBtn');
+    const cropBtn = document.getElementById('cropBtn');
+    const ocrOutput = document.getElementById('ocrOutput');
+    const clearBtn = document.getElementById('clearBtn');
+
+    let cropper;
+    let finalImageBlob = null;
+
+    imageInput.addEventListener('change', () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+
+        if (cropper) cropper.destroy();
+        cropper = new Cropper(previewImg, {
+          viewMode: 1,
+          aspectRatio: NaN,
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    cropBtn.addEventListener('click', () => {
+      if (!cropper) {
+        alert("No image to crop.");
+        return;
+      }
+
+      cropper.getCroppedCanvas().toBlob((blob) => {
+        finalImageBlob = blob;
+
+        // Replace preview image with cropped result
+        const url = URL.createObjectURL(blob);
+        previewImg.src = url;
+        cropper.destroy();
+        cropper = null;
+      }, 'image/jpeg');
+    });
+
+    processBtn.addEventListener('click', () => {
+      if (!finalImageBlob) {
+        alert("Please crop the image first.");
+        return;
+      }
+
+      ocrOutput.textContent = "Reading text...";
+
+      Tesseract.recognize(finalImageBlob, 'eng')
+        .then(({ data: { text } }) => {
+          ocrOutput.textContent = text;
+
+          // Save this permit as the current one
+          localStorage.setItem('permitText', text);
+
+          // Add to permit history
+          const allPermits = JSON.parse(localStorage.getItem('allPermits') || '[]');
+          allPermits.push(text);
+          localStorage.setItem('allPermits', JSON.stringify(allPermits));
+        })
+        .catch(err => {
+          console.error(err);
+          ocrOutput.textContent = "Failed to extract text.";
+        });
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm("Are you sure you want to delete all saved permits?")) {
+        localStorage.removeItem('allPermits');
+        localStorage.removeItem('permitText');
+        alert("All permits cleared.");
+        ocrOutput.textContent = "Permit text will appear here...";
+      }
+    });
+  </script>
 </body>
 </html>
