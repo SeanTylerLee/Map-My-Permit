@@ -1,82 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Basic mobile and iOS-friendly settings -->
+  <!-- iOS and mobile setup -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  
-  <!-- Page title -->
   <title>Map My Permit</title>
-
-  <!-- App manifest for iOS home screen integration -->
   <link rel="manifest" href="manifest.json" />
-
-  <!-- Styles moved to external file for clean layout -->
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Mapbox GL JS -->
+  <!-- Mapbox + Leaflet -->
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-
-  <!-- Leaflet.js for map display -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
-  <!-- Tesseract.js for OCR (AI reading of permit image) -->
+  <!-- OCR: Tesseract -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
-  <!-- Header at the top of the app -->
-  <header>
-    Map My Permit v2
-  </header>
+  <!-- Header -->
+  <header>Map My Permit v3</header>
 
-  <!-- Main content container -->
+  <!-- Main App UI -->
   <main>
-    <!-- Permit image upload and capture -->
     <section>
       <h2>Select Permit</h2>
       <input type="file" id="permitInput" accept="image/*" />
       <div id="permitPreview"></div>
     </section>
 
-    <!-- Map area -->
     <section>
       <h2>Route Map</h2>
       <div id="map"></div>
     </section>
 
-    <!-- Manual route selection instructions -->
     <section>
-      <p>Select your start and end point on the map. AI will extract route directions from permit in between.</p>
+      <p>Select your start and end point on the map. Then continue.</p>
       <button id="selectStart">Set Start</button>
       <button id="selectEnd">Set End</button>
-      <button id="buildRoute">Build Route</button>
+      <button id="goToReview">Next</button>
     </section>
 
-    <!-- OCR result and debug area -->
     <section>
       <h3>AI Extracted Directions</h3>
       <pre id="ocrOutput">Permit instructions will appear here after scan...</pre>
     </section>
   </main>
 
-  <!-- Bottom fixed navigation bar -->
+  <!-- iOS-style bottom nav -->
   <nav class="bottom-nav">
     <button onclick="history.back()">🔙 Back</button>
     <button onclick="location.href='index.html'">🏠 Home</button>
     <button onclick="location.href='settings.html'">⚙️ Settings</button>
   </nav>
 
-  <!-- Main JavaScript -->
+  <!-- Script logic -->
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA'; // Replace with your actual Mapbox key
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
 
-    // Leaflet map setup
-    const map = L.map('map').setView([42.99, -105.55], 6); // Default WY view
+    const map = L.map('map').setView([42.99, -105.55], 6);
     L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`, {
       attribution: '© Mapbox © OpenStreetMap',
       tileSize: 512,
@@ -87,29 +72,30 @@
     let endMarker = null;
     let selectingStart = false;
     let selectingEnd = false;
+    let ocrText = "";
 
-    // Handle permit image upload and run OCR
     document.getElementById('permitInput').addEventListener('change', async (event) => {
       const file = event.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
-          document.getElementById('permitPreview').innerHTML = `<img src="${e.target.result}" style="width:100%">`;
+          const imageSrc = e.target.result;
+          document.getElementById('permitPreview').innerHTML = `<img src="${imageSrc}" style="width:100%">`;
 
-          const { data: { text } } = await Tesseract.recognize(e.target.result, 'eng');
+          const { data: { text } } = await Tesseract.recognize(imageSrc, 'eng');
+          ocrText = text;
           document.getElementById('ocrOutput').textContent = text;
-
-          // TODO: parse the extracted text and create route instructions
+          localStorage.setItem('ocrText', text); // Save for use on review page
         };
         reader.readAsDataURL(file);
       }
     });
 
-    // Allow user to set start and end markers on the map
     document.getElementById('selectStart').onclick = () => {
       selectingStart = true;
       selectingEnd = false;
     };
+
     document.getElementById('selectEnd').onclick = () => {
       selectingStart = false;
       selectingEnd = true;
@@ -121,22 +107,27 @@
         if (startMarker) map.removeLayer(startMarker);
         startMarker = L.marker([lat, lng]).addTo(map).bindPopup("Start").openPopup();
         selectingStart = false;
+        localStorage.setItem('manualStart', JSON.stringify([lat, lng]));
       } else if (selectingEnd) {
         if (endMarker) map.removeLayer(endMarker);
         endMarker = L.marker([lat, lng]).addTo(map).bindPopup("End").openPopup();
         selectingEnd = false;
+        localStorage.setItem('manualEnd', JSON.stringify([lat, lng]));
       }
     });
 
-    // Placeholder route builder
-    document.getElementById('buildRoute').onclick = () => {
+    document.getElementById('goToReview').onclick = () => {
       if (!startMarker || !endMarker) {
-        alert("Please set both start and end points on the map.");
+        alert("Please select both a start and end point on the map first.");
         return;
       }
 
-      // TODO: Parse text between start and end, convert to waypoints, and build route using Mapbox
-      alert("Route builder coming soon!");
+      if (!ocrText.trim()) {
+        alert("OCR text not loaded yet. Please upload a permit image first.");
+        return;
+      }
+
+      location.href = "review.html";
     };
   </script>
 </body>
