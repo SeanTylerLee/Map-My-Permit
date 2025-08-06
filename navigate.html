@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Route Navigation</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <title>Map Navigation</title>
+  <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <style>
     #map {
@@ -33,68 +33,88 @@
     <div id="routeInstructions">Route instructions will appear here...</div>
   </main>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script>
-  const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
-  document.getElementById("routeInstructions").textContent = routeText.join('\n');
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
+    const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
+    const instructionBox = document.getElementById("routeInstructions");
 
-  const map = L.map('map').setView([35.5, -97.5], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-  }).addTo(map);
+    // Initialize Leaflet Map
+    const map = L.map('map').setView([35.5, -97.5], 6);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`, {
+      maxZoom: 18,
+      tileSize: 512,
+      zoomOffset: -1,
+      attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
+    }).addTo(map);
 
-  const fakePoints = {
-    "US-69": [35.435, -94.396],
-    "I-40": [35.4676, -97.5164],
-    "I-44": [36.154, -95.9928],
-    "US-75": [36.13, -95.9],
-    "OK-51": [36.1, -96.0],
-    "US-412": [36.13, -95.8]
-  };
-
-  async function fakeGeocode(routeLines) {
-    const points = [];
-    for (const line of routeLines) {
-      for (const key in fakePoints) {
-        if (line.includes(key)) {
-          points.push({ coords: fakePoints[key], instruction: line });
-          break;
-        }
+    // Combine route steps into one string for geocoding
+    const waypoints = [];
+    const geocodeStep = async (step) => {
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(step)}.json?access_token=${MAPBOX_TOKEN}`);
+      const data = await res.json();
+      if (data.features && data.features.length > 0) {
+        const [lon, lat] = data.features[0].center;
+        waypoints.push({ lat, lon, instruction: step });
       }
-    }
-    if (points.length < 2) {
-      points.push({ coords: [35.435, -94.396], instruction: "Start" });
-      points.push({ coords: [35.4676, -97.5164], instruction: "End" });
-    }
-    return points;
-  }
+    };
 
-  function speak(text) {
-    if (!'speechSynthesis' in window) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    speechSynthesis.speak(utterance);
-  }
+    const buildRoute = async () => {
+      for (const step of routeText) {
+        await geocodeStep(step);
+      }
 
-  // GPS + Voice Guidance Logic
-  fakeGeocode(routeText).then(waypoints => {
-    if (waypoints.length > 0) {
-      const latLngs = waypoints.map(w => w.coords);
+      if (waypoints.length < 2) {
+        alert("Could not geocode enough route points. Try editing permit text.");
+        return;
+      }
+
+      // Get route from Mapbox Directions API
+      const coords = waypoints.map(wp => `${wp.lon},${wp.lat}`).join(';');
+      const directionsURL = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
+      const routeRes = await fetch(directionsURL);
+      const routeData = await routeRes.json();
+
+      if (!routeData.routes || routeData.routes.length === 0) {
+        alert("Mapbox couldn't build a route.");
+        return;
+      }
+
+      const route = routeData.routes[0];
+      const geometry = route.geometry.coordinates;
+      const steps = route.legs.flatMap(leg => leg.steps.map(s => s.maneuver.instruction));
+
+      // Draw polyline
+      const latLngs = geometry.map(([lon, lat]) => [lat, lon]);
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      waypoints.forEach(w =>
-        L.circleMarker(w.coords, { radius: 5, color: 'red', fillColor: 'red', fillOpacity: 0.9 }).addTo(map)
-      );
+      // Add markers for each waypoint
+      waypoints.forEach(({ lat, lon }) => {
+        L.circleMarker([lat, lon], {
+          radius: 5,
+          color: 'red',
+          fillColor: 'red',
+          fillOpacity: 0.9
+        }).addTo(map);
+      });
 
-      let currentIndex = 0;
-      const spoken = new Set();
+      // Voice setup
+      let spokenSet = new Set();
+      function speak(text) {
+        if (!('speechSynthesis' in window)) return;
+        const utter = new SpeechSynthesisUtterance(text);
+        speechSynthesis.speak(utter);
+      }
 
-      if ("geolocation" in navigator) {
+      instructionBox.textContent = steps.join('\n');
+
+      // Track GPS and speak instructions
+      if ('geolocation' in navigator) {
         navigator.geolocation.watchPosition(
           (pos) => {
             const { latitude, longitude } = pos.coords;
 
-            // Place GPS dot
             if (window.gpsMarker) map.removeLayer(window.gpsMarker);
             window.gpsMarker = L.circleMarker([latitude, longitude], {
               radius: 6,
@@ -106,30 +126,24 @@
 
             const userLoc = L.latLng(latitude, longitude);
 
-            for (let i = currentIndex; i < waypoints.length; i++) {
-              const wp = L.latLng(waypoints[i].coords);
-              const dist = userLoc.distanceTo(wp); // meters
-
-              if (dist < 500 && !spoken.has(i)) {
-                speak(waypoints[i].instruction);
-                spoken.add(i);
-                currentIndex = i + 1;
-                break;
+            // Trigger voice when near waypoint
+            waypoints.forEach((wp, i) => {
+              const dist = userLoc.distanceTo([wp.lat, wp.lon]);
+              if (dist < 300 && !spokenSet.has(i)) {
+                speak(wp.instruction);
+                spokenSet.add(i);
               }
-            }
+            });
           },
           (err) => console.warn("GPS error:", err),
           { enableHighAccuracy: true, maximumAge: 5000 }
         );
       } else {
-        alert("GPS not supported in this browser.");
+        alert("GPS not supported.");
       }
-    }
-  });
-</script>
-  
+    };
 
-  
-  
+    buildRoute();
+  </script>
 </body>
 </html>

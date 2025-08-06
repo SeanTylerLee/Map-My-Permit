@@ -3,21 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Review Route</title>
+  <title>Review & Extract Route</title>
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    textarea {
+      width: 100%;
+      min-height: 200px;
+      margin-top: 1rem;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-family: monospace;
+    }
+
+    button {
+      margin-top: 1rem;
+      padding: 12px;
+      width: 100%;
+      background-color: #007aff;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+
+    pre {
+      background: #eee;
+      padding: 10px;
+      margin-top: 1rem;
+      border-radius: 8px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+  </style>
 </head>
 <body>
   <header>
-    <h1>Review Permit Route</h1>
+    <h1>Review Permit & Extract Route</h1>
   </header>
 
   <main class="container">
-    <textarea id="permitTextArea" rows="10" placeholder="Permit text..."></textarea>
-    <button onclick="extractRoute()">Extract Route</button>
+    <label for="permitTextArea">Permit Text:</label>
+    <textarea id="permitTextArea" placeholder="Permit OCR text..."></textarea>
+
+    <button onclick="extractRoute()">Extract Route Instructions</button>
+
     <pre id="routeOutput">Route instructions will appear here...</pre>
+
     <button onclick="window.location.href='navigate.html'">Next: Navigate</button>
   </main>
 
-  <script src="scripts/routes.js"></script>
+  <script>
+    const permitTextArea = document.getElementById('permitTextArea');
+    const routeOutput = document.getElementById('routeOutput');
+
+    // Load permit text from localStorage
+    const savedText = localStorage.getItem('permitText');
+    if (savedText) permitTextArea.value = savedText;
+
+    function extractRoute() {
+      const text = permitTextArea.value;
+      const lines = text.split('\n');
+
+      const routeLines = lines.filter(line =>
+        line.match(/\b(US|I|SR|HWY|Hwy|FM)-?\s?\d+/i) ||
+        line.toLowerCase().includes('take') ||
+        line.toLowerCase().includes('continue') ||
+        line.toLowerCase().includes('exit') ||
+        line.toLowerCase().includes('merge')
+      );
+
+      const cleaned = routeLines.map(l => l.trim()).filter(Boolean);
+      routeOutput.textContent = cleaned.join('\n');
+
+      localStorage.setItem('parsedRoute', JSON.stringify(cleaned));
+    }
+  </script>
 </body>
 </html>
