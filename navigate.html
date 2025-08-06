@@ -7,11 +7,7 @@
   <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <style>
-    #map {
-      height: 65vh;
-      margin-top: 10px;
-      border-radius: 10px;
-    }
+    #map { height: 65vh; margin-top: 10px; border-radius: 10px; }
     #routeInstructions, #debugLog {
       margin-top: 1rem;
       background: #eee;
@@ -52,6 +48,8 @@
     const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
     const routeSegments = JSON.parse(localStorage.getItem("parsedRouteSegments") || "[]");
     const selectedState = localStorage.getItem("routeState") || "";
+    const manualStart = JSON.parse(localStorage.getItem("manualStart") || "null");
+    const manualEnd = JSON.parse(localStorage.getItem("manualEnd") || "null");
     const instructionBox = document.getElementById("routeInstructions");
     const debugBox = document.getElementById("debugLog");
 
@@ -96,82 +94,85 @@
       return null;
     }
 
-    function chunkArray(array, size) {
-      const chunks = [];
-      for (let i = 0; i < array.length; i += size) {
-        chunks.push(array.slice(i, i + size));
-      }
-      return chunks;
+    function distance(a, b) {
+      const R = 6371e3;
+      const φ1 = a.lat * Math.PI / 180;
+      const φ2 = b.lat * Math.PI / 180;
+      const Δφ = (b.lat - a.lat) * Math.PI / 180;
+      const Δλ = (b.lng - a.lng) * Math.PI / 180;
+      const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
     }
 
     async function buildRoute() {
-      const debugLogs = [];
-      const instructions = [];
-      const validSegments = routeSegments.filter(seg => isValidRoadName(seg.road));
-      const pointPairs = [];
-
-      for (const seg of validSegments) {
-        const from = await geocodePlace(seg.from);
-        const to = await geocodePlace(seg.to);
-        if (from && to) {
-          pointPairs.push(from, to);
-          debugLogs.push(`✅ ${seg.road}: ${seg.from} → ${seg.to}`);
-        } else {
-          debugLogs.push(`❌ SKIPPED: ${seg.road}: ${seg.from} → ${seg.to}`);
-        }
-      }
-
-      if (pointPairs.length < 2) {
-        debugBox.textContent = "❌ No usable points for route.";
+      if (!manualStart || !manualEnd) {
+        alert("Start or end not set. Please select them on the map.");
         return;
       }
 
-      const chunks = chunkArray(pointPairs, 4); // max 4 waypoints per chunk
-      let totalPoints = [];
+      const debugLogs = [];
+      const waypoints = [];
+      const instructions = [];
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk.length < 2) continue;
+      const segmentCoords = [];
 
-        const coords = chunk.map(p => `${p.lng},${p.lat}`).join(";");
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
+      for (const seg of routeSegments.filter(s => isValidRoadName(s.road))) {
+        const from = await geocodePlace(seg.from);
+        const to = await geocodePlace(seg.to);
+        if (from && to) {
+          segmentCoords.push({ seg, from, to });
+        } else {
+          debugLogs.push(`❌ Skipped (bad geocode): ${seg.road} ${seg.from} → ${seg.to}`);
+        }
+      }
+
+      // Only keep segments that fall between manualStart and manualEnd
+      const filtered = segmentCoords.filter(({ from, to }) => {
+        const mid = {
+          lat: (from.lat + to.lat) / 2,
+          lng: (from.lng + to.lng) / 2
+        };
+        const dStart = distance(manualStart, mid);
+        const dEnd = distance(manualEnd, mid);
+        const total = distance(manualStart, manualEnd);
+        return dStart + dEnd <= total * 1.2; // allow ~20% margin
+      });
+
+      if (filtered.length === 0) {
+        debugBox.textContent = "❌ No segments found between start and end.";
+        return;
+      }
+
+      for (const { seg, from, to } of filtered) {
+        const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
         const res = await fetch(url);
         const data = await res.json();
 
         if (data.routes?.length) {
           const route = data.routes[0];
-          const line = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-          totalPoints.push(...line);
-
-          route.legs.forEach(leg => {
-            leg.steps.forEach(step => instructions.push(step.maneuver.instruction));
-          });
+          const latlngs = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+          L.polyline(latlngs, { color: 'blue', weight: 5 }).addTo(map);
+          waypoints.push(from, to);
+          route.legs[0].steps.forEach(step => instructions.push(step.maneuver.instruction));
+          debugLogs.push(`✅ Routed: ${seg.road} ${seg.from} → ${seg.to}`);
         } else {
-          debugLogs.push(`❌ Chunk ${i + 1} failed to build`);
+          debugLogs.push(`❌ Routing failed: ${seg.road} ${seg.from} → ${seg.to}`);
         }
       }
 
-      if (totalPoints.length < 2) {
-        debugBox.textContent = "❌ Final route could not be built.";
+      if (waypoints.length < 2) {
+        debugBox.textContent = "❌ Not enough good segments.";
         return;
       }
 
-      L.polyline(totalPoints, { color: 'blue', weight: 5 }).addTo(map);
-      map.fitBounds(L.polyline(totalPoints).getBounds());
+      instructionBox.textContent = instructions.join("\n");
+      debugBox.textContent = debugLogs.join("\n");
 
-      totalPoints.forEach(([lat, lng], i) => {
-        L.circleMarker([lat, lng], {
-          radius: 5,
-          color: 'red',
-          fillColor: 'red',
-          fillOpacity: 1
-        }).addTo(map).bindPopup(i === 0 ? "Start" : i === totalPoints.length - 1 ? "End" : `WP ${i}`);
-      });
+      const allPoints = waypoints.map(p => [p.lat, p.lng]);
+      map.fitBounds(L.polyline(allPoints).getBounds());
 
-      instructionBox.textContent = instructions.join('\n');
-      debugBox.textContent = debugLogs.join('\n');
-
-      // Voice nav
+      // GPS & voice
       let spokenSet = new Set();
       function speak(text) {
         if (!('speechSynthesis' in window)) return;

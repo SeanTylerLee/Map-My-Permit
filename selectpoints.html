@@ -5,79 +5,88 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Select Start & End</title>
   <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    #map {
-      height: 80vh;
+    #map { height: 60vh; margin-top: 10px; border-radius: 10px; }
+    textarea {
       width: 100%;
-    }
-    .controls {
-      padding: 1rem;
+      height: 150px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
     }
     button {
-      width: 100%;
       margin-top: 10px;
       padding: 12px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: none;
-      background-color: #007aff;
+      width: 100%;
+      background: #007aff;
       color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div class="controls">
-    <p><strong>Tap once to set START. Tap again to set END.</strong></p>
-    <button onclick="confirmPoints()">Continue to Navigation</button>
-  </div>
+  <header>
+    <h1>Select Start & End</h1>
+  </header>
+  <main class="container">
+    <label>Permit Text:</label>
+    <textarea id="permitTextArea" readonly></textarea>
+
+    <div id="map"></div>
+    <p style="margin-top: 0.5rem;">🟢 Click to set start. 🔴 Click again to set end.</p>
+    <button onclick="saveAndContinue()">Continue to Navigation</button>
+  </main>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([35.5, -97.5], 6);
-    const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
-
-    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`, {
-      maxZoom: 18,
-      tileSize: 512,
-      zoomOffset: -1,
-    }).addTo(map);
+    const permitTextArea = document.getElementById('permitTextArea');
+    const savedText = localStorage.getItem("permitText");
+    if (savedText) permitTextArea.value = savedText;
 
     let startMarker = null;
     let endMarker = null;
-    let clickCount = 0;
 
-    map.on('click', (e) => {
+    const map = L.map('map').setView([43.0, -106.0], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let clickCount = 0;
+    map.on("click", (e) => {
       const { lat, lng } = e.latlng;
+
       if (clickCount === 0) {
         if (startMarker) map.removeLayer(startMarker);
-        startMarker = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup("Start").openPopup();
+        startMarker = L.marker([lat, lng], { title: "Start", icon: L.icon({
+          iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+          iconSize: [32, 32], iconAnchor: [16, 32]
+        }) }).addTo(map).bindPopup("Start").openPopup();
+        localStorage.setItem("manualStart", JSON.stringify({ lat, lng }));
         clickCount++;
       } else if (clickCount === 1) {
         if (endMarker) map.removeLayer(endMarker);
-        endMarker = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup("End").openPopup();
+        endMarker = L.marker([lat, lng], { title: "End", icon: L.icon({
+          iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+          iconSize: [32, 32], iconAnchor: [16, 32]
+        }) }).addTo(map).bindPopup("End").openPopup();
+        localStorage.setItem("manualEnd", JSON.stringify({ lat, lng }));
         clickCount++;
+      } else {
+        alert("Start and end already set. Reload to reset.");
       }
     });
 
-    function confirmPoints() {
+    function saveAndContinue() {
       if (!startMarker || !endMarker) {
-        alert("Please select both a start and end location.");
+        alert("Please select both start and end points.");
         return;
       }
-
-      const start = startMarker.getLatLng();
-      const end = endMarker.getLatLng();
-
-      localStorage.setItem("routeStart", JSON.stringify(start));
-      localStorage.setItem("routeEnd", JSON.stringify(end));
-
       window.location.href = "navigate.html";
     }
   </script>
