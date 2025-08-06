@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <title>Select Start/End</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Page header -->
+  <header>Select Route</header>
+
+  <!-- Main content -->
+  <main>
+    <p>Tap on the map to select a start and end location.</p>
+    <button id="setStart">Set Start</button>
+    <button id="setEnd">Set End</button>
+    <button id="buildRoute">Build Route</button>
+
+    <div id="map" style="height: 300px; margin-top: 1rem;"></div>
+    <pre id="debugLog"></pre>
+  </main>
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button onclick="history.back()">🔙 Back</button>
+    <button onclick="location.href='index.html'">🏠 Home</button>
+    <button onclick="location.href='settings.html'">⚙️ Settings</button>
+  </nav>
+
+  <script>
+    // Set your Mapbox key here
+    const MAPBOX_TOKEN = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+
+    const map = L.map('map').setView([43.0, -105.5], 6);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`, {
+      attribution: '© Mapbox © OpenStreetMap',
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
+
+    let selectingStart = false;
+    let selectingEnd = false;
+    let startCoord = null;
+    let endCoord = null;
+    let startMarker = null;
+    let endMarker = null;
+
+    // Buttons to toggle which marker you're placing
+    document.getElementById('setStart').onclick = () => {
+      selectingStart = true;
+      selectingEnd = false;
+    };
+    document.getElementById('setEnd').onclick = () => {
+      selectingStart = false;
+      selectingEnd = true;
+    };
+
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      if (selectingStart) {
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker([lat, lng]).addTo(map).bindPopup("Start").openPopup();
+        startCoord = [lng, lat];
+        selectingStart = false;
+      } else if (selectingEnd) {
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker([lat, lng]).addTo(map).bindPopup("End").openPopup();
+        endCoord = [lng, lat];
+        selectingEnd = false;
+      }
+    });
+
+    // Build the route from filtered steps
+    document.getElementById('buildRoute').onclick = async () => {
+      if (!startCoord || !endCoord) {
+        alert("Please select both start and end points.");
+        return;
+      }
+
+      const debug = document.getElementById('debugLog');
+      debug.textContent = "Building route...";
+
+      // Load AI parsed directions (this would ideally be geocoded)
+      let parsedSteps = JSON.parse(localStorage.getItem('parsedRoute') || '[]');
+      if (parsedSteps.length === 0) {
+        debug.textContent = "No parsed permit steps found.";
+        return;
+      }
+
+      // For now, route only between start and end point
+      const coords = [startCoord, endCoord];
+
+      try {
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords.map(c => c.join(',')).join(';')}?geometries=geojson&access_token=${MAPBOX_TOKEN}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!data.routes || !data.routes[0]) {
+          debug.textContent = "Mapbox couldn't return a route.";
+          return;
+        }
+
+        const route = data.routes[0].geometry;
+        const line = L.geoJSON(route).addTo(map);
+        map.fitBounds(line.getBounds());
+        debug.textContent = "Route built successfully.";
+      } catch (err) {
+        debug.textContent = "Error building route: " + err;
+      }
+    };
+  </script>
+</body>
+</html>

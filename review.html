@@ -3,24 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <title>Review Permit</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+  <!-- Page header -->
   <header>Review Permit</header>
 
+  <!-- Main content -->
   <main>
-    <label for="permitText">Permit OCR Text:</label>
-    <textarea id="permitText" placeholder="Loading permit text..."></textarea>
+    <h2>Permit OCR Text</h2>
+    <!-- Editable OCR result -->
+    <textarea id="permitText" placeholder="Permit text will appear here..."></textarea>
 
-    <button onclick="extractRoute()">Extract Route Directions</button>
+    <!-- Button to extract just the route instructions -->
+    <button onclick="extractRoute()">Extract Route Instructions</button>
 
-    <h3>Parsed Route Instructions:</h3>
-    <pre id="output"></pre>
+    <h3>Filtered Directions:</h3>
+    <!-- Output of AI-filtered route instructions -->
+    <pre id="routeOutput">Route instructions will appear here...</pre>
 
+    <!-- Proceed to select start/end page -->
     <button onclick="location.href='selectpoints.html'">Next: Select Start/End</button>
   </main>
 
+  <!-- Fixed iOS-style bottom nav bar -->
   <nav class="bottom-nav">
     <button onclick="history.back()">🔙 Back</button>
     <button onclick="location.href='index.html'">🏠 Home</button>
@@ -28,30 +38,34 @@
   </nav>
 
   <script>
-    const textArea = document.getElementById('permitText');
-    const output = document.getElementById('output');
+    const permitText = document.getElementById('permitText');
+    const routeOutput = document.getElementById('routeOutput');
 
-    // Load OCR text from localStorage
-    const saved = localStorage.getItem('ocrText');
-    if (saved) textArea.value = saved;
+    // Load OCR text from previous page
+    const ocr = localStorage.getItem('ocrText');
+    if (ocr) permitText.value = ocr;
 
-    // Extract route-relevant directions
+    // Extract route-relevant steps using keywords and patterns
     function extractRoute() {
-      const lines = textArea.value.split('\n');
+      const lines = permitText.value.split('\n');
 
+      // Include lines that look like directions or road names
       const routeLines = lines.filter(line =>
-        line.match(/\b(US|I-|I|SR|WY|FM|HWY|BUS|CR)-?\s?\d+/i) ||  // roads
+        line.match(/\b(US|I-|I|SR|WY|FM|BUS|CR|HWY|Highway|Loop|Bypass)[-\s]?\d+/i) ||
         line.toLowerCase().includes('take') ||
         line.toLowerCase().includes('merge') ||
         line.toLowerCase().includes('exit') ||
         line.toLowerCase().includes('continue') ||
-        line.toLowerCase().includes('toward')
+        line.toLowerCase().includes('toward') ||
+        line.toLowerCase().includes('travel')
       );
 
       const cleaned = routeLines.map(line => line.trim()).filter(Boolean);
-      output.textContent = cleaned.join('\n');
 
-      // Save it to localStorage
+      // Show in <pre> element
+      routeOutput.textContent = cleaned.join('\n');
+
+      // Save for routing
       localStorage.setItem('parsedRoute', JSON.stringify(cleaned));
     }
   </script>
