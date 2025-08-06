@@ -63,7 +63,7 @@
       "Oklahoma": "-103.0,33.6,-94.4,37.0",
       "Kansas": "-102.1,36.9,-94.6,40.0",
       "Colorado": "-109.1,36.9,-102.0,41.0",
-      "Nebraska": "-104.05,39.99,-95.3,43.0",
+      "Nebraska": "-104.05,39.99,-95.3,43.0"
     };
 
     let gpsCentering = true;
@@ -71,6 +71,7 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
+
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -84,9 +85,13 @@
       attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
     }).addTo(map);
 
-    async function geocodePlace(place) {
+    function isValidRoadName(road) {
+      return road && /^(I|US|WY|SR|FM|CR|BUS)[-\s]?\d+/i.test(road);
+    }
+
+    async function geocodePlace(label) {
       const bbox = stateBBoxes[selectedState] || "";
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(place + ", " + selectedState)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(label + ", " + selectedState)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.features && data.features.length > 0) {
@@ -97,13 +102,14 @@
     }
 
     async function buildRoute() {
-      if (routeSegments.length === 0) {
-        alert("No permit segments found.");
+      const validSegments = routeSegments.filter(seg => isValidRoadName(seg.road));
+      if (validSegments.length === 0) {
+        alert("No valid road segments found from permit.");
         return;
       }
 
       const waypoints = [];
-      for (let seg of routeSegments) {
+      for (let seg of validSegments) {
         const fromCoord = await geocodePlace(seg.from);
         const toCoord = await geocodePlace(seg.to);
 
@@ -114,7 +120,7 @@
       }
 
       if (waypoints.length < 2) {
-        alert("Not enough valid waypoints from permit.");
+        alert("Not enough valid geocoded waypoints to build route.");
         return;
       }
 
@@ -124,7 +130,7 @@
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        alert("Mapbox couldn't build a route.");
+        alert("Mapbox couldn't build route from permit.");
         return;
       }
 
