@@ -38,12 +38,12 @@
 
   <main class="container">
     <label for="permitTextArea">Permit Text:</label>
-    <textarea id="permitTextArea" placeholder="Permit OCR text..."></textarea>
+    <textarea id="permitTextArea" placeholder="Paste permit text here or let OCR fill this in..."></textarea>
 
     <label for="stateSelect">Permit State:</label>
     <select id="stateSelect"></select>
 
-    <button onclick="extractRoute()">Extract Route</button>
+    <button onclick="extractSegments()">Extract Route</button>
 
     <pre id="jsonPreview">Parsed route segments will appear here...</pre>
 
@@ -52,8 +52,8 @@
 
   <script>
     const permitTextArea = document.getElementById('permitTextArea');
-    const stateSelect = document.getElementById('stateSelect');
     const jsonPreview = document.getElementById('jsonPreview');
+    const stateSelect = document.getElementById('stateSelect');
 
     const states = [
       "Wyoming", "Texas", "Oklahoma", "Kansas", "Colorado", "Nebraska", "Missouri",
@@ -61,10 +61,10 @@
     ];
 
     states.forEach(state => {
-      const option = document.createElement('option');
-      option.value = state;
-      option.textContent = state;
-      stateSelect.appendChild(option);
+      const opt = document.createElement("option");
+      opt.value = state;
+      opt.textContent = state;
+      stateSelect.appendChild(opt);
     });
 
     const savedText = localStorage.getItem('permitText');
@@ -74,61 +74,41 @@
     }
 
     function guessState(text) {
-      const found = states.find(state => text.toLowerCase().includes(state.toLowerCase()));
-      if (found) {
-        stateSelect.value = found;
-      }
+      const found = states.find(s => text.toLowerCase().includes(s.toLowerCase()));
+      if (found) stateSelect.value = found;
     }
 
-    function extractRoute() {
-      const text = permitTextArea.value;
-      guessState(text);
+    function extractSegments() {
+      const lines = permitTextArea.value.split('\n');
+      const segments = [];
 
-      const routeSegments = [];
+      let lastTo = "Origin";
 
-      const lines = text.split(/\n|\./);
       lines.forEach(line => {
-        const lower = line.toLowerCase();
+        // Match lines like "22.33 US-20 Turn right onto LUSK PORT OF ENTRY"
+        const match = line.match(/^ *([\d.]+)? *([A-Z0-9\-\/\[\] ]+)? +(.+)$/i);
+        if (!match) return;
 
-        // Match: Take [road] from [A] to [B]
-        const m1 = line.match(/take\s+(.*?)\s+from\s+(.*?)\s+to\s+(.*)/i);
-        if (m1) {
-          routeSegments.push({ road: m1[1].trim(), from: m1[2].trim(), to: m1[3].trim() });
-          return;
-        }
+        const [_, miles, road, instructions] = match;
 
-        // Match: Follow [road] from [A] to [B]
-        const m2 = line.match(/follow\s+(.*?)\s+from\s+(.*?)\s+to\s+(.*)/i);
-        if (m2) {
-          routeSegments.push({ road: m2[1].trim(), from: m2[2].trim(), to: m2[3].trim() });
-          return;
-        }
+        if (!road || !instructions) return;
 
-        // Match: Merge onto [road] and continue to [B]
-        const m3 = line.match(/merge\s+onto\s+(.*?)\s+and\s+continue\s+to\s+(.*)/i);
-        if (m3) {
-          routeSegments.push({ road: m3[1].trim(), from: "current location", to: m3[2].trim() });
-          return;
-        }
+        // Extract first clear location from instruction
+        const toMatch = instructions.match(/(?:onto|to|toward|exit to|continue to)\s+(.*)/i);
+        const to = toMatch ? toMatch[1].replace(/[\[\]\/]/g, '').trim() : instructions.trim();
 
-        // Match: Continue on [road] to [B]
-        const m4 = line.match(/continue\s+(?:on\s+)?(.*?)\s+to\s+(.*)/i);
-        if (m4) {
-          routeSegments.push({ road: m4[1].trim(), from: "current location", to: m4[2].trim() });
-          return;
-        }
+        segments.push({
+          road: road.replace(/[\[\]]/g, '').trim(),
+          from: lastTo,
+          to
+        });
 
-        // Match: Exit [X] onto [road]
-        const m5 = line.match(/exit\s+\d+\s+onto\s+(.*?)\s+to\s+(.*)/i);
-        if (m5) {
-          routeSegments.push({ road: m5[1].trim(), from: "previous exit", to: m5[2].trim() });
-          return;
-        }
+        lastTo = to;
       });
 
-      jsonPreview.textContent = JSON.stringify(routeSegments, null, 2);
-      localStorage.setItem("parsedRouteSegments", JSON.stringify(routeSegments));
+      localStorage.setItem("parsedRouteSegments", JSON.stringify(segments));
       localStorage.setItem("routeState", stateSelect.value);
+      jsonPreview.textContent = JSON.stringify(segments, null, 2);
     }
 
     function saveAndContinue() {
