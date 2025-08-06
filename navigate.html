@@ -8,18 +8,20 @@
   <link rel="stylesheet" href="styles.css" />
   <style>
     #map {
-      height: 70vh;
+      height: 65vh;
       margin-top: 10px;
       border-radius: 10px;
     }
 
-    #routeInstructions {
+    #routeInstructions, #debugLog {
       margin-top: 1rem;
       background: #eee;
       padding: 10px;
       border-radius: 8px;
       font-family: monospace;
       white-space: pre-wrap;
+      max-height: 20vh;
+      overflow-y: auto;
     }
 
     button {
@@ -47,7 +49,9 @@
     <div id="map"></div>
     <button id="viewRouteBtn">👁️ View Route</button>
     <button id="enableGPSBtn">📍 Re-enable GPS</button>
+
     <div id="routeInstructions">Route instructions will appear here...</div>
+    <div id="debugLog">Debug log will appear here...</div>
   </main>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -56,6 +60,7 @@
     const routeSegments = JSON.parse(localStorage.getItem("parsedRouteSegments") || "[]");
     const selectedState = localStorage.getItem("routeState") || "";
     const instructionBox = document.getElementById("routeInstructions");
+    const debugBox = document.getElementById("debugLog");
 
     const stateBBoxes = {
       "Wyoming": "-111.05,40.99,-104.05,45.00",
@@ -71,7 +76,6 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
-
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -102,25 +106,31 @@
     }
 
     async function buildRoute() {
+      const debugLogs = [];
       const validSegments = routeSegments.filter(seg => isValidRoadName(seg.road));
+
       if (validSegments.length === 0) {
-        alert("No valid road segments found from permit.");
+        debugLogs.push("❌ No valid segments found.");
+        debugBox.textContent = debugLogs.join("\n");
         return;
       }
 
       const waypoints = [];
-      for (let seg of validSegments) {
+      for (const [i, seg] of validSegments.entries()) {
         const fromCoord = await geocodePlace(seg.from);
         const toCoord = await geocodePlace(seg.to);
 
         if (fromCoord && toCoord) {
-          waypoints.push(fromCoord);
-          waypoints.push(toCoord);
+          waypoints.push(fromCoord, toCoord);
+          debugLogs.push(`✅ ${seg.road}: ${seg.from} → ${seg.to}\n    From: (${fromCoord.lat.toFixed(4)}, ${fromCoord.lng.toFixed(4)})\n    To:   (${toCoord.lat.toFixed(4)}, ${toCoord.lng.toFixed(4)})`);
+        } else {
+          debugLogs.push(`❌ ${seg.road}: ${seg.from} → ${seg.to}\n    ${!fromCoord ? "⚠️ from failed" : ""} ${!toCoord ? "⚠️ to failed" : ""}`);
         }
       }
 
       if (waypoints.length < 2) {
-        alert("Not enough valid geocoded waypoints to build route.");
+        debugLogs.push("❌ Not enough valid waypoints to build route.");
+        debugBox.textContent = debugLogs.join("\n");
         return;
       }
 
@@ -130,20 +140,22 @@
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        alert("Mapbox couldn't build route from permit.");
+        debugLogs.push("❌ Mapbox couldn't build the route.");
+        debugBox.textContent = debugLogs.join("\n");
         return;
       }
 
       const route = routeData.routes[0];
       const geometry = route.geometry.coordinates;
       const steps = route.legs.flatMap(leg => leg.steps.map(s => s.maneuver.instruction));
+      instructionBox.textContent = steps.join('\n');
 
       const latLngs = geometry.map(([lon, lat]) => [lat, lon]);
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
       waypoints.forEach(({ lat, lng }, i) => {
-        const label = i === 0 ? "Start" : i === waypoints.length - 1 ? "End" : `Step ${i}`;
+        const label = i === 0 ? "Start" : i === waypoints.length - 1 ? "End" : `WP ${i}`;
         L.circleMarker([lat, lng], {
           radius: 5,
           color: 'red',
@@ -152,7 +164,7 @@
         }).addTo(map).bindPopup(label);
       });
 
-      instructionBox.textContent = steps.join('\n');
+      debugBox.textContent = debugLogs.join("\n");
 
       let spokenSet = new Set();
       function speak(text) {
