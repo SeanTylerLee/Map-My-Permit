@@ -3,37 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Permit Upload</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icon.jpg" />
-  <title>My App</title>
 </head>
 <body>
-
-  <!-- Header -->
   <header>
-    <img src="images/header.jpg" alt="App Header" class="header-img" />
+    <h1>Upload Permit</h1>
   </header>
 
-  <!-- Main Content -->
   <main class="container">
-    <h1>Welcome</h1>
-    <p>This is your fresh start. Tap a button below to get going:</p>
-    
-    <nav class="nav-buttons">
-      <a href="page1.html" class="btn">Page 1</a>
-      <a href="page2.html" class="btn">Page 2</a>
-      <a href="settings.html" class="btn">Settings</a>
-    </nav>
+    <input type="file" accept="image/*" capture="environment" id="imageInput">
+    <div id="imagePreview"></div>
+    <button id="processBtn">Extract Text</button>
+    <pre id="ocrOutput">Permit text will appear here...</pre>
+    <button id="nextBtn" onclick="window.location.href='routes.html'">Next: Build Route</button>
   </main>
 
-  <!-- Bottom Navigation (optional) -->
-  <footer class="bottom-nav">
-    <a href="index.html">Home</a>
-    <a href="settings.html">Settings</a>
-  </footer>
-
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+  <script src="scripts/ocr.js"></script>
 </body>
 </html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Route Navigation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    #map {
+      height: 80vh;
+      margin-top: 10px;
+      border-radius: 10px;
+    }
+
+    #routeInstructions {
+      margin-top: 1rem;
+      background: #eee;
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Map Navigation</h1>
+  </header>
+
+  <main class="container">
+    <div id="map"></div>
+    <div id="routeInstructions">Route instructions will appear here...</div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Load route text
+    const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
+    document.getElementById("routeInstructions").textContent = routeText.join('\n');
+
+    // Map setup
+    const map = L.map('map').setView([35.5, -97.5], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    // Simulated geocode (replace with real API later)
+    const fakePoints = {
+      "US-69": [35.435, -94.396],
+      "I-40": [35.4676, -97.5164],
+      "I-44": [36.154, -95.9928],
+      "US-75": [36.13, -95.9],
+      "OK-51": [36.1, -96.0],
+      "US-412": [36.13, -95.8]
+    };
+
+    async function fakeGeocode(routeLines) {
+      const points = [];
+
+      for (const line of routeLines) {
+        for (const key in fakePoints) {
+          if (line.includes(key)) {
+            points.push(fakePoints[key]);
+            break;
+          }
+        }
+      }
+
+      // If empty, provide a fallback route
+      if (points.length < 2) {
+        points.push([35.435, -94.396]);
+        points.push([35.4676, -97.5164]);
+      }
+
+      return points;
+    }
+
+    // Draw route on map
+    fakeGeocode(routeText).then(points => {
+      if (points.length > 0) {
+        const routeLine = L.polyline(points, { color: 'blue', weight: 5 }).addTo(map);
+        map.fitBounds(routeLine.getBounds());
+
+        points.forEach(([lat, lon]) => {
+          L.circleMarker([lat, lon], {
+            radius: 5,
+            color: 'red',
+            fillColor: 'red',
+            fillOpacity: 0.9
+          }).addTo(map);
+        });
+      }
+    });
+
+    // GPS tracking
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+
+          // Remove existing GPS marker if needed
+          if (window.gpsMarker) {
+            map.removeLayer(window.gpsMarker);
+          }
+
+          // Place new GPS marker
+          window.gpsMarker = L.circleMarker([latitude, longitude], {
+            radius: 6,
+            color: 'green',
+            fillColor: 'lime',
+            fillOpacity: 1
+          }).addTo(map);
+
+          // Center map on GPS position
+          map.setView([latitude, longitude], 15);
+        },
+        (err) => {
+          console.warn("GPS error:", err);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5000
+        }
+      );
+    } else {
+      alert("GPS not supported in this browser.");
+    }
+  </script>
+  
+  
+  // === VOICE INSTRUCTIONS ===
+function speakRouteSteps(steps, delay = 5000) {
+  if (!'speechSynthesis' in window) {
+    alert("This browser doesn't support speech synthesis.");
+    return;
+  }
+
+  let index = 0;
+
+  function speakNext() {
+    if (index >= steps.length) return;
+
+    const utterance = new SpeechSynthesisUtterance(steps[index]);
+    speechSynthesis.speak(utterance);
+    index++;
+
+    // Speak next after delay
+    setTimeout(speakNext, delay);
+  }
+
+  speakNext();
+}
+
+// Trigger speech after route loads
+if (routeText.length > 0) {
+  setTimeout(() => speakRouteSteps(routeText), 2000); // small delay after page loads
+}
+  
+  
+</body>
+</html>

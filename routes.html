@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Review Route</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Review Permit Route</h1>
+  </header>
+
+  <main class="container">
+    <textarea id="permitTextArea" rows="10" placeholder="Permit text..."></textarea>
+    <button onclick="extractRoute()">Extract Route</button>
+    <pre id="routeOutput">Route instructions will appear here...</pre>
+    <button onclick="window.location.href='navigate.html'">Next: Navigate</button>
+  </main>
+
+  <script src="scripts/routes.js"></script>
+</body>
+</html>
