@@ -76,6 +76,7 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
+
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -108,7 +109,6 @@
     async function buildRoute() {
       const debugLogs = [];
       const validSegments = routeSegments.filter(seg => isValidRoadName(seg.road));
-
       if (validSegments.length === 0) {
         debugLogs.push("❌ No valid segments found.");
         debugBox.textContent = debugLogs.join("\n");
@@ -116,20 +116,32 @@
       }
 
       const waypoints = [];
+
       for (const [i, seg] of validSegments.entries()) {
         const fromCoord = await geocodePlace(seg.from);
         const toCoord = await geocodePlace(seg.to);
 
         if (fromCoord && toCoord) {
+          // Try building a test route for this pair only
+          const testUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${fromCoord.lng},${fromCoord.lat};${toCoord.lng},${toCoord.lat}?access_token=${MAPBOX_TOKEN}`;
+          const testRes = await fetch(testUrl);
+          const testData = await testRes.json();
+
+          if (!testData.routes || testData.routes.length === 0) {
+            debugLogs.push(`❌ Skipping ${seg.road}: ${seg.from} → ${seg.to} (Mapbox couldn't route)`);
+            break;
+          }
+
           waypoints.push(fromCoord, toCoord);
           debugLogs.push(`✅ ${seg.road}: ${seg.from} → ${seg.to}\n    From: (${fromCoord.lat.toFixed(4)}, ${fromCoord.lng.toFixed(4)})\n    To:   (${toCoord.lat.toFixed(4)}, ${toCoord.lng.toFixed(4)})`);
         } else {
-          debugLogs.push(`❌ ${seg.road}: ${seg.from} → ${seg.to}\n    ${!fromCoord ? "⚠️ from failed" : ""} ${!toCoord ? "⚠️ to failed" : ""}`);
+          debugLogs.push(`❌ Geocode failed: ${seg.road}: ${seg.from} → ${seg.to}`);
+          break;
         }
       }
 
       if (waypoints.length < 2) {
-        debugLogs.push("❌ Not enough valid waypoints to build route.");
+        debugLogs.push("❌ Not enough valid geocoded waypoints to build route.");
         debugBox.textContent = debugLogs.join("\n");
         return;
       }
@@ -140,7 +152,7 @@
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        debugLogs.push("❌ Mapbox couldn't build the route.");
+        debugLogs.push("❌ Mapbox couldn't build route from remaining waypoints.");
         debugBox.textContent = debugLogs.join("\n");
         return;
       }
