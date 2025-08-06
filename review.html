@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Review Permit</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>Review Permit</header>
+
+  <main>
+    <label for="permitText">Permit OCR Text:</label>
+    <textarea id="permitText" placeholder="Loading permit text..."></textarea>
+
+    <button onclick="extractRoute()">Extract Route Directions</button>
+
+    <h3>Parsed Route Instructions:</h3>
+    <pre id="output"></pre>
+
+    <button onclick="location.href='selectpoints.html'">Next: Select Start/End</button>
+  </main>
+
+  <nav class="bottom-nav">
+    <button onclick="history.back()">🔙 Back</button>
+    <button onclick="location.href='index.html'">🏠 Home</button>
+    <button onclick="location.href='settings.html'">⚙️ Settings</button>
+  </nav>
+
+  <script>
+    const textArea = document.getElementById('permitText');
+    const output = document.getElementById('output');
+
+    // Load OCR text from localStorage
+    const saved = localStorage.getItem('ocrText');
+    if (saved) textArea.value = saved;
+
+    // Extract route-relevant directions
+    function extractRoute() {
+      const lines = textArea.value.split('\n');
+
+      const routeLines = lines.filter(line =>
+        line.match(/\b(US|I-|I|SR|WY|FM|HWY|BUS|CR)-?\s?\d+/i) ||  // roads
+        line.toLowerCase().includes('take') ||
+        line.toLowerCase().includes('merge') ||
+        line.toLowerCase().includes('exit') ||
+        line.toLowerCase().includes('continue') ||
+        line.toLowerCase().includes('toward')
+      );
+
+      const cleaned = routeLines.map(line => line.trim()).filter(Boolean);
+      output.textContent = cleaned.join('\n');
+
+      // Save it to localStorage
+      localStorage.setItem('parsedRoute', JSON.stringify(cleaned));
+    }
+  </script>
+</body>
+</html>

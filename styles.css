@@ -1,37 +1,50 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #f9f9f9;
   margin: 0;
   padding: 0;
+  background: #f2f2f7;
+  color: #000;
 }
 
 header {
   background: #000;
   color: #fff;
-  padding: 1rem;
   text-align: center;
-}
-
-.container {
   padding: 1rem;
+  font-size: 1.2rem;
 }
 
-input[type="file"],
-button {
+main {
+  padding: 1rem;
+  padding-bottom: 120px; /* leave space for bottom nav */
+}
+
+h2, h3 {
+  margin-top: 1.5rem;
+  font-weight: bold;
+}
+
+#map {
+  height: 300px;
   width: 100%;
-  margin-top: 10px;
-  padding: 12px;
-  font-size: 16px;
+  border: 2px solid #ccc;
   border-radius: 8px;
-  border: none;
-  background: #007aff;
-  color: white;
 }
 
-pre {
-  background: #eee;
-  padding: 1rem;
-  white-space: pre-wrap;
-  margin-top: 10px;
-  border-radius: 8px;
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  background: #fff;
+  border-top: 1px solid #ccc;
+  padding: 10px 0;
+}
+
+.bottom-nav button {
+  font-size: 1.1rem;
+  background: none;
+  border: none;
+  color: #007aff;
 }

@@ -1,170 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- Basic mobile and iOS-friendly settings -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Upload Permit v2</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  
+  <!-- Page title -->
+  <title>Map My Permit</title>
+
+  <!-- App manifest for iOS home screen integration -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Styles moved to external file for clean layout -->
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.css">
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #f9f9f9;
-      margin: 0;
-      padding: 0;
-    }
 
-    header {
-      background: #000;
-      color: #fff;
-      padding: 1rem;
-      text-align: center;
-    }
+  <!-- Mapbox GL JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 
-    .container {
-      padding: 1rem;
-    }
+  <!-- Leaflet.js for map display -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
-    input[type="file"],
-    button {
-      width: 100%;
-      margin-top: 10px;
-      padding: 12px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: none;
-      background: #007aff;
-      color: white;
-    }
-
-    pre {
-      background: #eee;
-      padding: 1rem;
-      white-space: pre-wrap;
-      margin-top: 10px;
-      border-radius: 8px;
-    }
-
-    #imagePreview img {
-      max-width: 100%;
-      border: 1px solid #ccc;
-      margin-top: 10px;
-      border-radius: 8px;
-      max-height: 300px;
-    }
-
-    #cropBtn {
-      background-color: #ff9500;
-    }
-
-    #clearBtn {
-      background-color: #ff3b30;
-    }
-  </style>
+  <!-- Tesseract.js for OCR (AI reading of permit image) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
 </head>
 <body>
+
+  <!-- Header at the top of the app -->
   <header>
-    <h1>Upload Permit v12</h1>
+    Map My Permit
   </header>
 
-  <main class="container">
-    <input type="file" accept="image/*" id="imageInput" />
+  <!-- Main content container -->
+  <main>
+    <!-- Permit image upload and capture -->
+    <section>
+      <h2>Select Permit</h2>
+      <input type="file" id="permitInput" accept="image/*" capture="environment" />
+      <div id="permitPreview"></div>
+    </section>
 
-    <div id="imagePreview">
-      <img id="previewImg" style="display:none;" />
-    </div>
+    <!-- Map area -->
+    <section>
+      <h2>Route Map</h2>
+      <div id="map"></div>
+    </section>
 
-    <button id="cropBtn">Crop & Use Image</button>
-    <button id="processBtn">Extract Text</button>
-    <button id="clearBtn">🗑️ Clear All Permits</button>
+    <!-- Manual route selection instructions -->
+    <section>
+      <p>Select your start and end point on the map. AI will extract route directions from permit in between.</p>
+      <button id="selectStart">Set Start</button>
+      <button id="selectEnd">Set End</button>
+      <button id="buildRoute">Build Route</button>
+    </section>
 
-    <pre id="ocrOutput">Permit text will appear here...</pre>
-
-    <button onclick="window.location.href='routes.html'">Next: Build Route</button>
+    <!-- OCR result and debug area -->
+    <section>
+      <h3>AI Extracted Directions</h3>
+      <pre id="ocrOutput">Permit instructions will appear here after scan...</pre>
+    </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-  <script src="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.js"></script>
+  <!-- Bottom fixed navigation bar -->
+  <nav class="bottom-nav">
+    <button onclick="history.back()">🔙 Back</button>
+    <button onclick="location.href='index.html'">🏠 Home</button>
+    <button onclick="location.href='settings.html'">⚙️ Settings</button>
+  </nav>
+
+  <!-- Main JavaScript -->
   <script>
-    const imageInput = document.getElementById('imageInput');
-    const previewImg = document.getElementById('previewImg');
-    const processBtn = document.getElementById('processBtn');
-    const cropBtn = document.getElementById('cropBtn');
-    const ocrOutput = document.getElementById('ocrOutput');
-    const clearBtn = document.getElementById('clearBtn');
+    mapboxgl.accessToken = 'YOUR_MAPBOX_TOKEN_HERE'; // Replace with your actual Mapbox key
 
-    let cropper;
-    let finalImageBlob = null;
+    // Leaflet map setup
+    const map = L.map('map').setView([42.99, -105.55], 6); // Default WY view
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`, {
+      attribution: '© Mapbox © OpenStreetMap',
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
 
-    imageInput.addEventListener('change', () => {
-      const file = imageInput.files[0];
-      if (!file) return;
+    let startMarker = null;
+    let endMarker = null;
+    let selectingStart = false;
+    let selectingEnd = false;
 
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        previewImg.src = e.target.result;
-        previewImg.style.display = 'block';
+    // Handle permit image upload and run OCR
+    document.getElementById('permitInput').addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          document.getElementById('permitPreview').innerHTML = `<img src="${e.target.result}" style="width:100%">`;
 
-        if (cropper) cropper.destroy();
-        cropper = new Cropper(previewImg, {
-          viewMode: 1,
-          aspectRatio: NaN,
-        });
-      };
-      reader.readAsDataURL(file);
+          const { data: { text } } = await Tesseract.recognize(e.target.result, 'eng');
+          document.getElementById('ocrOutput').textContent = text;
+
+          // TODO: parse the extracted text and create route instructions
+        };
+        reader.readAsDataURL(file);
+      }
     });
 
-    cropBtn.addEventListener('click', () => {
-      if (!cropper) {
-        alert("No image to crop.");
+    // Allow user to set start and end markers on the map
+    document.getElementById('selectStart').onclick = () => {
+      selectingStart = true;
+      selectingEnd = false;
+    };
+    document.getElementById('selectEnd').onclick = () => {
+      selectingStart = false;
+      selectingEnd = true;
+    };
+
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      if (selectingStart) {
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker([lat, lng]).addTo(map).bindPopup("Start").openPopup();
+        selectingStart = false;
+      } else if (selectingEnd) {
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker([lat, lng]).addTo(map).bindPopup("End").openPopup();
+        selectingEnd = false;
+      }
+    });
+
+    // Placeholder route builder
+    document.getElementById('buildRoute').onclick = () => {
+      if (!startMarker || !endMarker) {
+        alert("Please set both start and end points on the map.");
         return;
       }
 
-      cropper.getCroppedCanvas().toBlob((blob) => {
-        finalImageBlob = blob;
-
-        // Replace preview image with cropped result
-        const url = URL.createObjectURL(blob);
-        previewImg.src = url;
-        cropper.destroy();
-        cropper = null;
-      }, 'image/jpeg');
-    });
-
-    processBtn.addEventListener('click', () => {
-      if (!finalImageBlob) {
-        alert("Please crop the image first.");
-        return;
-      }
-
-      ocrOutput.textContent = "Reading text...";
-
-      Tesseract.recognize(finalImageBlob, 'eng')
-        .then(({ data: { text } }) => {
-          ocrOutput.textContent = text;
-
-          // Save this permit as the current one
-          localStorage.setItem('permitText', text);
-
-          // Add to permit history
-          const allPermits = JSON.parse(localStorage.getItem('allPermits') || '[]');
-          allPermits.push(text);
-          localStorage.setItem('allPermits', JSON.stringify(allPermits));
-        })
-        .catch(err => {
-          console.error(err);
-          ocrOutput.textContent = "Failed to extract text.";
-        });
-    });
-
-    clearBtn.addEventListener('click', () => {
-      if (confirm("Are you sure you want to delete all saved permits?")) {
-        localStorage.removeItem('allPermits');
-        localStorage.removeItem('permitText');
-        alert("All permits cleared.");
-        ocrOutput.textContent = "Permit text will appear here...";
-      }
-    });
+      // TODO: Parse text between start and end, convert to waypoints, and build route using Mapbox
+      alert("Route builder coming soon!");
+    };
   </script>
 </body>
 </html>
