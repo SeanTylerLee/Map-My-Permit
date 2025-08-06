@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css" />
   <style>
     #map {
-      height: 80vh;
+      height: 70vh;
       margin-top: 10px;
       border-radius: 10px;
     }
@@ -21,6 +21,21 @@
       font-family: monospace;
       white-space: pre-wrap;
     }
+
+    button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background-color: #007aff;
+      color: white;
+    }
+
+    button:nth-of-type(2) {
+      background-color: #34c759;
+    }
   </style>
 </head>
 <body>
@@ -30,6 +45,8 @@
 
   <main class="container">
     <div id="map"></div>
+    <button id="viewRouteBtn">👁️ View Route</button>
+    <button id="enableGPSBtn">📍 Re-enable GPS</button>
     <div id="routeInstructions">Route instructions will appear here...</div>
   </main>
 
@@ -39,7 +56,18 @@
     const routeText = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
     const instructionBox = document.getElementById("routeInstructions");
 
-    // Initialize Leaflet Map
+    let gpsCentering = true;
+
+    document.getElementById('viewRouteBtn').addEventListener('click', () => {
+      gpsCentering = false;
+      alert("GPS auto-centering disabled. You can zoom and pan freely.");
+    });
+
+    document.getElementById('enableGPSBtn').addEventListener('click', () => {
+      gpsCentering = true;
+      alert("GPS auto-centering re-enabled.");
+    });
+
     const map = L.map('map').setView([35.5, -97.5], 6);
     L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`, {
       maxZoom: 18,
@@ -48,8 +76,8 @@
       attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
     }).addTo(map);
 
-    // Combine route steps into one string for geocoding
     const waypoints = [];
+
     const geocodeStep = async (step) => {
       const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(step)}.json?access_token=${MAPBOX_TOKEN}`);
       const data = await res.json();
@@ -69,7 +97,6 @@
         return;
       }
 
-      // Get route from Mapbox Directions API
       const coords = waypoints.map(wp => `${wp.lon},${wp.lat}`).join(';');
       const directionsURL = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
       const routeRes = await fetch(directionsURL);
@@ -84,12 +111,10 @@
       const geometry = route.geometry.coordinates;
       const steps = route.legs.flatMap(leg => leg.steps.map(s => s.maneuver.instruction));
 
-      // Draw polyline
       const latLngs = geometry.map(([lon, lat]) => [lat, lon]);
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      // Add markers for each waypoint
       waypoints.forEach(({ lat, lon }) => {
         L.circleMarker([lat, lon], {
           radius: 5,
@@ -99,7 +124,6 @@
         }).addTo(map);
       });
 
-      // Voice setup
       let spokenSet = new Set();
       function speak(text) {
         if (!('speechSynthesis' in window)) return;
@@ -109,7 +133,6 @@
 
       instructionBox.textContent = steps.join('\n');
 
-      // Track GPS and speak instructions
       if ('geolocation' in navigator) {
         navigator.geolocation.watchPosition(
           (pos) => {
@@ -122,11 +145,12 @@
               fillColor: 'lime',
               fillOpacity: 1
             }).addTo(map);
-            map.setView([latitude, longitude], 15);
+
+            if (gpsCentering) {
+              map.setView([latitude, longitude], 15);
+            }
 
             const userLoc = L.latLng(latitude, longitude);
-
-            // Trigger voice when near waypoint
             waypoints.forEach((wp, i) => {
               const dist = userLoc.distanceTo([wp.lat, wp.lon]);
               if (dist < 300 && !spokenSet.has(i)) {
