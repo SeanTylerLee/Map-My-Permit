@@ -29,24 +29,6 @@
       white-space: pre-wrap;
       margin-top: 10px;
     }
-
-    #editableSteps {
-      margin-top: 1rem;
-    }
-
-    .step-line {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 5px;
-    }
-
-    .step-line input {
-      flex: 1;
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      font-family: monospace;
-    }
   </style>
 </head>
 <body>
@@ -61,17 +43,17 @@
     <label for="stateSelect">Permit State:</label>
     <select id="stateSelect"></select>
 
-    <button onclick="extractRoute()">Extract Route Instructions</button>
+    <button onclick="extractRoute()">Extract Route</button>
 
-    <div id="editableSteps"></div>
+    <pre id="jsonPreview">Parsed route segments will appear here...</pre>
 
     <button onclick="saveAndContinue()">Next: Select Start & End</button>
   </main>
 
   <script>
     const permitTextArea = document.getElementById('permitTextArea');
-    const editableSteps = document.getElementById('editableSteps');
     const stateSelect = document.getElementById('stateSelect');
+    const jsonPreview = document.getElementById('jsonPreview');
 
     const states = [
       "Wyoming", "Texas", "Oklahoma", "Kansas", "Colorado", "Nebraska", "Missouri",
@@ -101,33 +83,55 @@
     function extractRoute() {
       const text = permitTextArea.value;
       guessState(text);
-      const lines = text.split('\n');
 
-      const routeLines = lines.filter(line =>
-        line.match(/\b(US|I|SR|HWY|Hwy|FM)-?\s?\d+/i) ||
-        /(take|merge|continue|exit|turn|follow|head|stay|bear|proceed)/i.test(line)
-      );
+      const routeSegments = [];
 
-      const cleaned = routeLines.map(l => l.trim()).filter(Boolean);
+      const lines = text.split(/\n|\./);
+      lines.forEach(line => {
+        const lower = line.toLowerCase();
 
-      // Show editable inputs
-      editableSteps.innerHTML = `<h3>Edit Route Steps</h3>`;
-      cleaned.forEach((line, index) => {
-        const div = document.createElement("div");
-        div.className = "step-line";
-        div.innerHTML = `<input type="text" value="${line}" data-index="${index}">`;
-        editableSteps.appendChild(div);
+        // Match: Take [road] from [A] to [B]
+        const m1 = line.match(/take\s+(.*?)\s+from\s+(.*?)\s+to\s+(.*)/i);
+        if (m1) {
+          routeSegments.push({ road: m1[1].trim(), from: m1[2].trim(), to: m1[3].trim() });
+          return;
+        }
+
+        // Match: Follow [road] from [A] to [B]
+        const m2 = line.match(/follow\s+(.*?)\s+from\s+(.*?)\s+to\s+(.*)/i);
+        if (m2) {
+          routeSegments.push({ road: m2[1].trim(), from: m2[2].trim(), to: m2[3].trim() });
+          return;
+        }
+
+        // Match: Merge onto [road] and continue to [B]
+        const m3 = line.match(/merge\s+onto\s+(.*?)\s+and\s+continue\s+to\s+(.*)/i);
+        if (m3) {
+          routeSegments.push({ road: m3[1].trim(), from: "current location", to: m3[2].trim() });
+          return;
+        }
+
+        // Match: Continue on [road] to [B]
+        const m4 = line.match(/continue\s+(?:on\s+)?(.*?)\s+to\s+(.*)/i);
+        if (m4) {
+          routeSegments.push({ road: m4[1].trim(), from: "current location", to: m4[2].trim() });
+          return;
+        }
+
+        // Match: Exit [X] onto [road]
+        const m5 = line.match(/exit\s+\d+\s+onto\s+(.*?)\s+to\s+(.*)/i);
+        if (m5) {
+          routeSegments.push({ road: m5[1].trim(), from: "previous exit", to: m5[2].trim() });
+          return;
+        }
       });
 
-      // Save editable copy to memory
-      localStorage.setItem("rawSteps", JSON.stringify(cleaned));
+      jsonPreview.textContent = JSON.stringify(routeSegments, null, 2);
+      localStorage.setItem("parsedRouteSegments", JSON.stringify(routeSegments));
+      localStorage.setItem("routeState", stateSelect.value);
     }
 
     function saveAndContinue() {
-      const inputs = document.querySelectorAll(".step-line input");
-      const finalSteps = Array.from(inputs).map(input => input.value.trim()).filter(Boolean);
-      localStorage.setItem("parsedRoute", JSON.stringify(finalSteps));
-      localStorage.setItem("routeState", stateSelect.value);
       window.location.href = "selectpoints.html";
     }
   </script>

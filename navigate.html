@@ -53,7 +53,7 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     const MAPBOX_TOKEN = "pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA";
-    const parsedSteps = JSON.parse(localStorage.getItem("parsedRoute") || "[]");
+    const routeSegments = JSON.parse(localStorage.getItem("parsedRouteSegments") || "[]");
     const selectedState = localStorage.getItem("routeState") || "";
     const instructionBox = document.getElementById("routeInstructions");
 
@@ -64,10 +64,6 @@
       "Kansas": "-102.1,36.9,-94.6,40.0",
       "Colorado": "-109.1,36.9,-102.0,41.0",
       "Nebraska": "-104.05,39.99,-95.3,43.0",
-      "Missouri": "-95.8,35.9,-89.1,40.6",
-      "Iowa": "-96.6,40.4,-90.1,43.5",
-      "Minnesota": "-97.2,43.5,-89.5,49.4",
-      // Add more states as needed
     };
 
     let gpsCentering = true;
@@ -75,7 +71,6 @@
       gpsCentering = false;
       alert("GPS auto-centering disabled.");
     });
-
     document.getElementById('enableGPSBtn').addEventListener('click', () => {
       gpsCentering = true;
       alert("GPS auto-centering re-enabled.");
@@ -89,10 +84,9 @@
       attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
     }).addTo(map);
 
-    async function geocodeInstruction(step) {
+    async function geocodePlace(place) {
       const bbox = stateBBoxes[selectedState] || "";
-      const query = `${step}, ${selectedState}`;
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(place + ", " + selectedState)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.features && data.features.length > 0) {
@@ -103,29 +97,34 @@
     }
 
     async function buildRoute() {
-      const start = JSON.parse(localStorage.getItem('routeStart'));
-      const end = JSON.parse(localStorage.getItem('routeEnd'));
-
-      if (!start || !end) {
-        alert("Start/end points not set.");
+      if (routeSegments.length === 0) {
+        alert("No permit segments found.");
         return;
       }
 
-      const stepPoints = [];
-      for (const step of parsedSteps) {
-        const point = await geocodeInstruction(step);
-        if (point) stepPoints.push(point);
+      const waypoints = [];
+      for (let seg of routeSegments) {
+        const fromCoord = await geocodePlace(seg.from);
+        const toCoord = await geocodePlace(seg.to);
+
+        if (fromCoord && toCoord) {
+          waypoints.push(fromCoord);
+          waypoints.push(toCoord);
+        }
       }
 
-      const waypoints = [start, ...stepPoints, end];
-      const coords = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
+      if (waypoints.length < 2) {
+        alert("Not enough valid waypoints from permit.");
+        return;
+      }
 
+      const coords = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?geometries=geojson&steps=true&access_token=${MAPBOX_TOKEN}`;
       const routeRes = await fetch(url);
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        alert("Could not build route. Check permit text.");
+        alert("Mapbox couldn't build a route.");
         return;
       }
 
@@ -137,16 +136,14 @@
       const polyline = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
       map.fitBounds(polyline.getBounds());
 
-      L.marker([start.lat, start.lng]).addTo(map).bindPopup("Start").openPopup();
-      L.marker([end.lat, end.lng]).addTo(map).bindPopup("End");
-
-      stepPoints.forEach(({ lat, lng }) => {
+      waypoints.forEach(({ lat, lng }, i) => {
+        const label = i === 0 ? "Start" : i === waypoints.length - 1 ? "End" : `Step ${i}`;
         L.circleMarker([lat, lng], {
-          radius: 4,
+          radius: 5,
           color: 'red',
           fillColor: 'red',
           fillOpacity: 1
-        }).addTo(map);
+        }).addTo(map).bindPopup(label);
       });
 
       instructionBox.textContent = steps.join('\n');
