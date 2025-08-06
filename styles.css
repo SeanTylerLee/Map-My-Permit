@@ -1,0 +1,47 @@
+:root {
+  --bg: #f9f9f9;
+  --text: #111;
+  --primary: #007aff;
+  --card: #ffffff;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.header-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.container {
+  padding: 1rem;
+  text-align: center;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  margin: 0.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  background: var(--card);
+  display: flex;
+  justify-content: space-around;
+  padding: 0.75rem 0;
+  border-top: 1px solid #ccc;
+}
