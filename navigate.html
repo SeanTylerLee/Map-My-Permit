@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Navigate Route</title>
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Leaflet and Mapbox -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+  <header>Route Navigation</header>
+
+  <main>
+    <section>
+      <h3>Route Preview</h3>
+      <div id="map" style="height: 300px; border-radius: 10px;"></div>
+    </section>
+
+    <section>
+      <h3>Steps</h3>
+      <ul id="stepList"></ul>
+    </section>
+
+    <section>
+      <button onclick="toggleVoice()">🔊 Toggle Voice</button>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button onclick="history.back()">🔙 Back</button>
+    <button onclick="location.href='index.html'">🏠 Home</button>
+    <button onclick="location.href='settings.html'">⚙️ Settings</button>
+  </nav>
+
+  <script>
+    const accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+
+    const start = JSON.parse(localStorage.getItem('manualStart'));
+    const end = JSON.parse(localStorage.getItem('manualEnd'));
+    const steps = JSON.parse(localStorage.getItem('parsedSteps')) || [];
+
+    const map = L.map('map').setView([start.lat, start.lng], 7);
+
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=${accessToken}`, {
+      attribution: '© Mapbox © OpenStreetMap',
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
+
+    let markers = [];
+    let polyline;
+    let voiceEnabled = false;
+
+    // Display step list
+    const stepList = document.getElementById('stepList');
+    steps.forEach(step => {
+      const li = document.createElement('li');
+      li.textContent = step;
+      stepList.appendChild(li);
+    });
+
+    // Speak instructions
+    function speak(text) {
+      if (!voiceEnabled) return;
+      const utter = new SpeechSynthesisUtterance(text);
+      speechSynthesis.speak(utter);
+    }
+
+    function toggleVoice() {
+      voiceEnabled = !voiceEnabled;
+      alert(`Voice ${voiceEnabled ? "enabled" : "disabled"}`);
+    }
+
+    // Geocode step text → coordinates
+    async function geocode(text) {
+      const response = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(text)}.json?access_token=${accessToken}&limit=1`);
+      const data = await response.json();
+      if (data.features && data.features.length) {
+        const [lng, lat] = data.features[0].center;
+        return { lat, lng };
+      }
+      return null;
+    }
+
+    async function buildRoute() {
+      const routePoints = [];
+
+      // Add start manually
+      routePoints.push(start);
+
+      // Geocode steps
+      for (let step of steps) {
+        const coord = await geocode(step);
+        if (coord) {
+          routePoints.push(coord);
+        } else {
+          console.warn('Failed to geocode step:', step);
+        }
+      }
+
+      // Add end manually
+      routePoints.push(end);
+
+      // Plot markers
+      routePoints.forEach((pt, i) => {
+        const m = L.marker([pt.lat, pt.lng]).addTo(map).bindPopup(i === 0 ? "Start" : i === routePoints.length - 1 ? "End" : `Step ${i}`).openPopup();
+        markers.push(m);
+      });
+
+      // Draw route line
+      const latlngs = routePoints.map(pt => [pt.lat, pt.lng]);
+      polyline = L.polyline(latlngs, { color: 'blue', weight: 5 }).addTo(map);
+      map.fitBounds(polyline.getBounds());
+
+      // Optional: voice preview
+      if (voiceEnabled) {
+        for (let i = 1; i < steps.length; i++) {
+          setTimeout(() => speak(steps[i]), i * 3000);
+        }
+      }
+    }
+
+    buildRoute();
+  </script>
+</body>
+</html>

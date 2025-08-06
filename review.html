@@ -4,33 +4,47 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-  <title>Review Permit</title>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Review & Build Route</title>
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Leaflet + Mapbox tiles -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
 
-  <!-- Page header -->
-  <header>Review Permit</header>
+  <header>Review Permit Route</header>
 
-  <!-- Main content -->
   <main>
-    <h2>Permit OCR Text</h2>
-    <!-- Editable OCR result -->
-    <textarea id="permitText" placeholder="Permit text will appear here..."></textarea>
+    <!-- Raw permit text from OCR -->
+    <section>
+      <h3>Permit Text</h3>
+      <textarea id="permitText" placeholder="Loading OCR..." readonly></textarea>
+    </section>
 
-    <!-- Button to extract just the route instructions -->
-    <button onclick="extractRoute()">Extract Route Instructions</button>
+    <!-- Extracted AI route steps -->
+    <section>
+      <h3>Extracted Route Steps</h3>
+      <pre id="routeOutput">Extracting...</pre>
+    </section>
 
-    <h3>Filtered Directions:</h3>
-    <!-- Output of AI-filtered route instructions -->
-    <pre id="routeOutput">Route instructions will appear here...</pre>
+    <!-- Interactive map -->
+    <section>
+      <h3>Select Start & End Points</h3>
+      <p>Tap on the map to set start and end points for this route.</p>
+      <button onclick="setStart()">Set Start</button>
+      <button onclick="setEnd()">Set End</button>
+      <div id="map" style="height: 300px; border-radius: 10px; margin-top: 10px;"></div>
+    </section>
 
-    <!-- Proceed to select start/end page -->
-    <button onclick="location.href='selectpoints.html'">Next: Select Start/End</button>
+    <!-- Proceed to navigation -->
+    <section>
+      <button onclick="saveRouteAndProceed()">Navigate Route</button>
+    </section>
   </main>
 
-  <!-- Fixed iOS-style bottom nav bar -->
+  <!-- Bottom nav -->
   <nav class="bottom-nav">
     <button onclick="history.back()">🔙 Back</button>
     <button onclick="location.href='index.html'">🏠 Home</button>
@@ -38,35 +52,77 @@
   </nav>
 
   <script>
+    let rawText = localStorage.getItem('ocrText') || '';
+    let steps = [];
+    let startMarker = null, endMarker = null;
+    let selectingStart = false, selectingEnd = false;
+
     const permitText = document.getElementById('permitText');
     const routeOutput = document.getElementById('routeOutput');
 
-    // Load OCR text from previous page
-    const ocr = localStorage.getItem('ocrText');
-    if (ocr) permitText.value = ocr;
+    permitText.value = rawText;
 
-    // Extract route-relevant steps using keywords and patterns
-    function extractRoute() {
-      const lines = permitText.value.split('\n');
-
-      // Include lines that look like directions or road names
+    // Try to extract directions (basic AI filter)
+    function extractSteps(text) {
+      const lines = text.split('\n').map(l => l.trim());
       const routeLines = lines.filter(line =>
-        line.match(/\b(US|I-|I|SR|WY|FM|BUS|CR|HWY|Highway|Loop|Bypass)[-\s]?\d+/i) ||
+        line.match(/\b(I|US|SR|HWY|Hwy|FM|WY|CR|Loop|Route|Exit)[\s\-]?\d+/i) ||
         line.toLowerCase().includes('take') ||
-        line.toLowerCase().includes('merge') ||
         line.toLowerCase().includes('exit') ||
+        line.toLowerCase().includes('merge') ||
         line.toLowerCase().includes('continue') ||
-        line.toLowerCase().includes('toward') ||
-        line.toLowerCase().includes('travel')
+        line.toLowerCase().includes('turn')
       );
+      return routeLines.filter(Boolean);
+    }
 
-      const cleaned = routeLines.map(line => line.trim()).filter(Boolean);
+    steps = extractSteps(rawText);
+    routeOutput.textContent = steps.length ? steps.join('\n') : '⚠️ No permit directions found.';
 
-      // Show in <pre> element
-      routeOutput.textContent = cleaned.join('\n');
+    // Store filtered steps in localStorage
+    localStorage.setItem('parsedSteps', JSON.stringify(steps));
 
-      // Save for routing
-      localStorage.setItem('parsedRoute', JSON.stringify(cleaned));
+    // Leaflet map setup
+    const map = L.map('map').setView([43.0, -105.0], 6);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token=pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA`, {
+      attribution: '© Mapbox © OpenStreetMap',
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
+
+    // Set start and end interaction
+    function setStart() {
+      selectingStart = true;
+      selectingEnd = false;
+    }
+
+    function setEnd() {
+      selectingEnd = true;
+      selectingStart = false;
+    }
+
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      if (selectingStart) {
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker([lat, lng]).addTo(map).bindPopup("Start").openPopup();
+        localStorage.setItem('manualStart', JSON.stringify({ lat, lng }));
+        selectingStart = false;
+      } else if (selectingEnd) {
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker([lat, lng]).addTo(map).bindPopup("End").openPopup();
+        localStorage.setItem('manualEnd', JSON.stringify({ lat, lng }));
+        selectingEnd = false;
+      }
+    });
+
+    function saveRouteAndProceed() {
+      if (!startMarker || !endMarker) {
+        alert("Please set both start and end points first.");
+        return;
+      }
+      // Proceed to navigation screen
+      location.href = 'navigate.html';
     }
   </script>
 </body>
