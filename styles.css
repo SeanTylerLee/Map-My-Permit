@@ -100,3 +100,13 @@ textarea{ width:100%; padding:12px; background:#f8f8fa; border:1px solid var(--t
 }
 .tab img{ width:42px; height:42px; }
 .tab.active{ font-weight:700; }
+
+/* background fixed */
+
+/* Fixed background for the whole page */
+body.has-bg {
+  background: url('images/background.jpg') no-repeat center center fixed;
+  background-size: cover;
+  margin: 0;
+  padding: 0;
+}
