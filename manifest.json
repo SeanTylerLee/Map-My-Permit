@@ -7,17 +7,17 @@
   "theme_color": "#f2f2f7",
   "icons": [
     {
-      "src": "images/appicon.png",
+      "src": "images/appicon2.png",
       "sizes": "1024x1024",
       "type": "image/png"
     },
     {
-      "src": "images/appicon.png",
+      "src": "images/appicon2.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "images/appicon.png",
+      "src": "images/appicon2.png",
       "sizes": "192x192",
       "type": "image/png"
     }
