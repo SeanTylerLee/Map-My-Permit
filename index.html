@@ -1,61 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Meta so it behaves like an iOS app and prevents zooming -->
+  <!-- iOS/PWA meta -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Map My Permit</title>
 
-  <!-- Link the external stylesheet (all styles live in styles.css) -->
+  <!-- Link styles -->
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- PWA manifest -->
+  <!-- Manifest for PWA install -->
   <link rel="manifest" href="manifest.json" />
 </head>
 <body class="has-bg">
-  <!-- ========== App Header (logo + title + gear) ========== -->
+  <!-- ===== App Header ===== -->
   <header class="app-header">
-    <!-- Small round logo; replace images/logo.png with your asset -->
-    <img class="app-logo" src="images/logo.png" alt="Map My Permit Logo" />
-    
-    <!-- Title block (title + subtitle) -->
+    <img class="app-logo" src="images/logo.png" alt="Logo" />
     <div class="app-title-wrap">
       <h1 class="app-title">Map My Permit</h1>
       <p class="app-subtitle">Your Route Assistant</p>
     </div>
-
-    <!-- Settings button; wire it later to settings.html if you want -->
-    <button class="icon-btn" aria-label="Settings">
+    <button class="icon-btn">
       <img src="images/gear.png" alt="Settings" />
     </button>
   </header>
 
-  <!-- ========== Notification bar (tappable row) ========== -->
+  <!-- ===== Optional notification row ===== -->
   <button class="row-button" aria-label="Notification History">
     <span>Notification History</span>
     <span class="chevron">›</span>
   </button>
 
-  <!-- ========== Hero area over background image ========== -->
+  <!-- ===== Main actions ===== -->
   <main class="hero">
-    <!-- Big pill buttons (match the screenshot layout) -->
+    <!-- Two pill buttons -->
     <div class="hero-actions">
-      <!-- Left button (can repurpose later) -->
-      <a class="pill-btn" href="#">
-        <img src="images/info.png" alt="" />
-        <span>News & Updates</span>
-      </a>
-
-      <!-- Main CTA goes to submit.html to upload/take a photo -->
       <a class="pill-btn" href="submit.html">
         <img src="images/upload.png" alt="" />
         <span>Submit Permits</span>
       </a>
+      <a class="pill-btn" href="routes.html">
+        <img src="images/route.png" alt="" />
+        <span>Saved Routes</span>
+      </a>
     </div>
 
-    <!-- Icon grid: quick links (swap/rename as you like) -->
+    <!-- Icon grid for quick links -->
     <section class="icon-grid">
       <a class="icon-card" href="submit.html">
         <img src="images/camera.png" alt="" />
@@ -63,7 +55,7 @@
       </a>
       <a class="icon-card" href="routes.html">
         <img src="images/route.png" alt="" />
-        <span>Saved Routes</span>
+        <span>View Routes</span>
       </a>
       <a class="icon-card" href="#">
         <img src="images/pin.png" alt="" />
@@ -84,7 +76,7 @@
     </section>
   </main>
 
-  <!-- ========== Bottom Nav (Home + Routes) ========== -->
+  <!-- ===== Bottom Nav ===== -->
   <nav class="tabbar">
     <a class="tab active" href="index.html">
       <img src="images/home.png" alt="" />
@@ -96,9 +88,8 @@
     </a>
   </nav>
 
-  <!-- Optional: register the service worker (safe no-op if unsupported) -->
+  <!-- Register service worker for PWA -->
   <script>
-    // Registers the service worker so the app can install & cache assets
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
     }

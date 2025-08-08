@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- iOS/PWA meta -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Routes • Map My Permit</title>
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Mapbox GL JS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+</head>
+<body>
+  <!-- ===== Header ===== -->
+  <header class="app-header">
+    <a class="icon-btn" href="index.html" aria-label="Back">
+      <img src="images/back.png" alt="Back" />
+    </a>
+    <div class="app-title-wrap">
+      <h1 class="app-title">Saved Routes</h1>
+      <p class="app-subtitle">View • Map • Export</p>
+    </div>
+    <span class="icon-btn" aria-hidden="true" style="opacity:.4;">
+      <img src="images/route.png" alt="" />
+    </span>
+  </header>
+
+  <!-- ===== Main content ===== -->
+  <main class="content">
+    <!-- Routes list -->
+    <section class="card">
+      <h2 class="section-title">Your Routes</h2>
+      <div id="routesList" class="list"></div>
+      <p id="emptyMsg" class="muted small" style="display:none;">
+        No routes yet. Go to Submit Permits to create one.
+      </p>
+    </section>
+
+    <!-- Route details -->
+    <section id="details" class="card" style="display:none;">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <h2 id="detailTitle" class="section-title" style="margin-bottom:0;">Route Details</h2>
+        <div class="row">
+          <button id="exportBtn" class="ghost-btn">Export JSON</button>
+          <button id="deleteBtn" class="ghost-btn">Delete</button>
+        </div>
+      </div>
+
+      <!-- Map preview -->
+      <div id="detailMap" class="map" style="margin-top:12px; display:none;"></div>
+
+      <!-- Parsed JSON -->
+      <h3 class="section-title" style="margin-top:14px;">Parsed Data</h3>
+      <textarea id="detailJson" class="mono" rows="10" readonly></textarea>
+
+      <!-- OCR text -->
+      <h3 class="section-title" style="margin-top:14px;">OCR Text</h3>
+      <textarea id="detailOcr" class="mono" rows="8" readonly></textarea>
+    </section>
+  </main>
+
+  <!-- ===== Bottom Nav ===== -->
+  <nav class="tabbar">
+    <a class="tab" href="index.html">
+      <img src="images/home.png" alt="" />
+      <span>Home</span>
+    </a>
+    <a class="tab active" href="routes.html">
+      <img src="images/route.png" alt="" />
+      <span>Routes</span>
+    </a>
+  </nav>
+
+  <script>
+    /* =================== CONFIG =================== */
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+
+    const key = 'mmp_routes';
+    const routes = JSON.parse(localStorage.getItem(key) || '[]');
+
+    const listEl = document.getElementById('routesList');
+    const emptyMsg = document.getElementById('emptyMsg');
+    const details = document.getElementById('details');
+    const detailTitle = document.getElementById('detailTitle');
+    const detailJson = document.getElementById('detailJson');
+    const detailOcr = document.getElementById('detailOcr');
+    const detailMap = document.getElementById('detailMap');
+    const exportBtn = document.getElementById('exportBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+
+    let currentRoute = null;
+    let map, routeLayerId = 'savedRoute';
+
+    /* =================== INIT =================== */
+    if (!routes.length) {
+      emptyMsg.style.display = 'block';
+    } else {
+      routes.forEach(r => listEl.appendChild(renderItem(r)));
+    }
+
+    function renderItem(r) {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.style.display = 'flex';
+      item.style.justifyContent = 'space-between';
+      item.style.alignItems = 'center';
+      item.style.padding = '10px';
+      item.style.borderBottom = '1px solid var(--tint-2)';
+
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="list-title">${escapeHtml(r.name)}</div>
+                        <div class="muted small">${new Date(r.createdAt).toLocaleString()}</div>`;
+
+      const btn = document.createElement('button');
+      btn.className = 'chip';
+      btn.textContent = 'Open';
+      btn.onclick = () => openDetails(r.id);
+
+      item.appendChild(left);
+      item.appendChild(btn);
+      return item;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    /* =================== OPEN DETAILS =================== */
+    function openDetails(id) {
+      const r = routes.find(x => x.id === id);
+      if (!r) return;
+
+      currentRoute = r;
+      detailTitle.textContent = r.name;
+      detailJson.value = JSON.stringify(r.parsed, null, 2);
+      detailOcr.value = r.ocrText || '';
+      details.style.display = 'block';
+
+      if (r.route) {
+        detailMap.style.display = 'block';
+        if (!map) {
+          map = new mapboxgl.Map({
+            container: 'detailMap',
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: r.start || [-104.99, 41.14],
+            zoom: 6
+          });
+          map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+          map.on('load', () => drawRoute(r.route));
+        } else {
+          removeRouteLayer();
+          drawRoute(r.route);
+        }
+      } else {
+        detailMap.style.display = 'none';
+      }
+    }
+
+    function drawRoute(geojson) {
+      removeRouteLayer();
+      map.addSource('preview', { type: 'geojson', data: geojson });
+      map.addLayer({
+        id: routeLayerId,
+        type: 'line',
+        source: 'preview',
+        paint: { 'line-width': 5, 'line-color': '#111' }
+      });
+
+      const bounds = new mapboxgl.LngLatBounds();
+      geojson.geometry.coordinates.forEach(c => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 30 });
+    }
+
+    function removeRouteLayer() {
+      if (map && map.getSource('preview')) {
+        if (map.getLayer(routeLayerId)) map.removeLayer(routeLayerId);
+        map.removeSource('preview');
+      }
+    }
+
+    /* =================== EXPORT & DELETE =================== */
+    exportBtn.addEventListener('click', () => {
+      if (!currentRoute) return;
+      const blob = new Blob([JSON.stringify(currentRoute, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentRoute.name.replace(/\W+/g,'_')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    deleteBtn.addEventListener('click', () => {
+      if (!currentRoute) return;
+      if (!confirm(`Delete route "${currentRoute.name}"?`)) return;
+      const idx = routes.findIndex(r => r.id === currentRoute.id);
+      if (idx !== -1) {
+        routes.splice(idx, 1);
+        localStorage.setItem(key, JSON.stringify(routes));
+        listEl.innerHTML = '';
+        if (!routes.length) {
+          emptyMsg.style.display = 'block';
+        } else {
+          routes.forEach(r => listEl.appendChild(renderItem(r)));
+        }
+        details.style.display = 'none';
+        currentRoute = null;
+        removeRouteLayer();
+      }
+    });
+  </script>
+
+  <style>
+    .list { display: flex; flex-direction: column; }
+    .list-item .list-title { font-weight: 600; }
+  </style>
+</body>
+</html>
