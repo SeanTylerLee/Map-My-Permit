@@ -12,8 +12,24 @@
 }
 
 /* ===== Page scaffolding ===== */
-body{ font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif; color: var(--text); background: var(--bg); min-height:100vh; padding-bottom: 64px; }
-.has-bg{ background-image: url('images/background.jpg'); background-size: cover; background-position: center; }
+body {
+  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  min-height:100vh;
+  padding-bottom: 64px;
+}
+
+/* Fixed background for the whole page (stays in place on scroll) */
+html, body { height: 100%; }
+body.has-bg {
+  background-image: url('images/background.jpg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;           /* keep it still */
+  background-color: var(--bg);            /* fallback while loading */
+}
 
 /* ===== Header ===== */
 .app-header{
@@ -68,9 +84,17 @@ body{ font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Helve
 .row{ display:flex; gap:10px; flex-wrap:wrap; }
 
 /* ===== Inputs / buttons ===== */
-input[type="file"]{ width:100%; padding:12px; background:#f8f8fa; border:1px solid var(--tint-2); border-radius:12px; }
-textarea{ width:100%; padding:12px; background:#f8f8fa; border:1px solid var(--tint-2); border-radius:12px; }
-.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+input[type="file"]{
+  width:100%; padding:12px; background:#f8f8fa;
+  border:1px solid var(--tint-2); border-radius:12px;
+}
+textarea{
+  width:100%; padding:12px; background:#f8f8fa;
+  border:1px solid var(--tint-2); border-radius:12px;
+}
+.mono{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
 
 .primary-btn{
   background:#1c1c1e; color:#fff; border:0; padding:12px 14px; border-radius:12px;
@@ -82,11 +106,22 @@ textarea{ width:100%; padding:12px; background:#f8f8fa; border:1px solid var(--t
 .chip{ border:1px solid var(--tint-2); background:#fff; padding:6px 10px; border-radius:999px; }
 
 /* ===== Image preview ===== */
-.preview-wrap{ margin-top:10px; border:1px dashed var(--tint-2); border-radius:12px; padding:8px; display:flex; justify-content:center; align-items:center; min-height:140px; background:#fafafa; }
-#preview{ max-width:100%; max-height:280px; border-radius:10px; display:block; }
+.preview-wrap{
+  margin-top:10px; border:1px dashed var(--tint-2);
+  border-radius:12px; padding:8px;
+  display:flex; justify-content:center; align-items:center;
+  min-height:140px; background:#fafafa;
+}
+#preview{
+  max-width:100%; max-height:280px;
+  border-radius:10px; display:block;
+}
 
 /* ===== Map container ===== */
-.map{ width:100%; height:320px; border-radius:12px; overflow:hidden; }
+.map{
+  width:100%; height:320px;
+  border-radius:12px; overflow:hidden;
+}
 
 /* ===== Bottom tab bar ===== */
 .tabbar{
@@ -100,13 +135,3 @@ textarea{ width:100%; padding:12px; background:#f8f8fa; border:1px solid var(--t
 }
 .tab img{ width:42px; height:42px; }
 .tab.active{ font-weight:700; }
-
-/* background fixed */
-
-/* Fixed background for the whole page */
-body.has-bg {
-  background: url('images/background.jpg') no-repeat center center fixed;
-  background-size: cover;
-  margin: 0;
-  padding: 0;
-}
