@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Standard PWA/iOS meta -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Submit Permit • Map My Permit</title>
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Mapbox GL JS (map rendering) -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
+  <!-- Tesseract.js (client-side OCR) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <!-- ========== App Header with Back button ========== -->
+  <header class="app-header">
+    <button class="icon-btn" onclick="history.back()" aria-label="Back">
+      <img src="images/back.png" alt="Back" />
+    </button>
+    <div class="app-title-wrap">
+      <h1 class="app-title">Submit Permits</h1>
+      <p class="app-subtitle">Upload • Read • Map</p>
+    </div>
+    <a class="icon-btn" href="index.html" aria-label="Home">
+      <img src="images/home.png" alt="Home" />
+    </a>
+  </header>
+
+  <!-- ========== Content area ========== -->
+  <main class="content">
+    <!-- 1) Capture/Upload panel -->
+    <section class="card">
+      <h2 class="section-title">Upload or Take a Photo</h2>
+      <!-- File input allows camera on mobile (capture) and gallery (accept) -->
+      <input id="permitImage" type="file" accept="image/*" capture="environment" />
+      <div class="preview-wrap">
+        <img id="preview" alt="Preview" />
+      </div>
+      <button id="runOcrBtn" class="primary-btn" disabled>Read Text with AI (OCR)</button>
+      <p id="ocrStatus" class="muted"></p>
+    </section>
+
+    <!-- 2) Raw OCR text (read-only so you can copy) -->
+    <section class="card">
+      <h2 class="section-title">Detected Text</h2>
+      <textarea id="ocrText" class="mono" rows="8" placeholder="OCR results will appear here..." readonly></textarea>
+    </section>
+
+    <!-- 3) Parsed steps (first-pass rule-based parser) -->
+    <section class="card">
+      <h2 class="section-title">Parsed Route Steps</h2>
+      <p class="muted small">
+        Tip: This first version looks for lines like
+        <code>START: City, ST</code>, <code>END: City, ST</code>,
+        and bullet lines like <code>- Take US-62 E for 12 mi</code>.
+        We’ll harden this once we see real permits.
+      </p>
+      <textarea id="parsedJson" class="mono" rows="8" readonly></textarea>
+      <div class="row">
+        <button id="editStepsBtn" class="ghost-btn">Edit Steps Manually</button>
+        <button id="buildRouteBtn" class="primary-btn" disabled>Build Map Route</button>
+      </div>
+    </section>
+
+    <!-- 4) Map + controls -->
+    <section class="card">
+      <h2 class="section-title">Map Preview</h2>
+      <div id="map" class="map"></div>
+      <div class="chip-row">
+        <button id="setStartMode" class="chip">Pick Start on Map</button>
+        <button id="setEndMode" class="chip">Pick End on Map</button>
+        <button id="addWaypointMode" class="chip">Add Waypoint</button>
+        <button id="clearWaypoints" class="chip">Clear</button>
+      </div>
+      <p class="muted small">
+        Tap the map to set start/end or add waypoints. Then "Build Map Route".
+      </p>
+    </section>
+  </main>
+
+  <!-- ========== Bottom Nav ========== -->
+  <nav class="tabbar">
+    <a class="tab" href="index.html">
+      <img src="images/home.png" alt="" />
+      <span>Home</span>
+    </a>
+    <a class="tab" href="routes.html">
+      <img src="images/route.png" alt="" />
+      <span>Routes</span>
+    </a>
+  </nav>
+
+  <script>
+    /* ==========================================================
+       Config: paste your Mapbox token here
+       ========================================================== */
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+
+    /* ==========================================================
+       DOM refs
+       ========================================================== */
+    const fileInput = document.getElementById('permitImage');
+    const previewEl = document.getElementById('preview');
+    const runOcrBtn = document.getElementById('runOcrBtn');
+    const ocrStatus = document.getElementById('ocrStatus');
+    const ocrText = document.getElementById('ocrText');
+    const parsedJson = document.getElementById('parsedJson');
+    const buildRouteBtn = document.getElementById('buildRouteBtn');
+    const editStepsBtn = document.getElementById('editStepsBtn');
+
+    /* ==========================================================
+       State for mapping (start, end, waypoints, map + markers)
+       ========================================================== */
+    let start = null;        // {lng, lat}
+    let end = null;          // {lng, lat}
+    let waypoints = [];      // array of {lng, lat}
+    let map, startMarker, endMarker, waypointMarkers = [];
+    let clickMode = null;    // 'start' | 'end' | 'waypoint' | null
+
+    /* ==========================================================
+       Setup: basic image preview + enable OCR button
+       ========================================================== */
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      previewEl.src = url;
+      runOcrBtn.disabled = false;
+      ocrText.value = '';
+      parsedJson.value = '';
+      ocrStatus.textContent = '';
+    });
+
+    /* ==========================================================
+       OCR: run Tesseract on the chosen image (client-side)
+       ========================================================== */
+    runOcrBtn.addEventListener('click', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      runOcrBtn.disabled = true;
+      ocrStatus.textContent = 'Reading text... this can take a few seconds.';
+      try {
+        const { data } = await Tesseract.recognize(file, 'eng', {
+          logger: m => {
+            if (m.status && m.progress != null) {
+              ocrStatus.textContent = `${m.status} ${Math.round(m.progress * 100)}%`;
+            }
+          }
+        });
+        ocrText.value = (data?.text || '').trim();
+        ocrStatus.textContent = 'Done.';
+        // Try to parse into steps and show JSON
+        const parsed = parsePermit(ocrText.value);
+        parsedJson.value = JSON.stringify(parsed, null, 2);
+        buildRouteBtn.disabled = false;
+      } catch (e) {
+        console.error(e);
+        ocrStatus.textContent = 'OCR failed. Try a clearer photo.';
+      } finally {
+        runOcrBtn.disabled = false;
+      }
+    });
+
+    /* ==========================================================
+       Simple parser: looks for START:, END:, and lines beginning with "-"
+       Example:
+         START: Amarillo, TX
+         - Take US-60 E for 25 mi
+         - Turn right onto TX-152
+         END: Elk City, OK
+       ========================================================== */
+    function parsePermit(text) {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const result = { start: null, end: null, steps: [] };
+
+      for (const line of lines) {
+        if (/^START:/i.test(line)) {
+          result.start = line.replace(/^START:/i, '').trim();
+        } else if (/^END:/i.test(line)) {
+          result.end = line.replace(/^END:/i, '').trim();
+        } else if (/^[-•]/.test(line)) {
+          result.steps.push(line.replace(/^[-•]\s?/, '').trim());
+        }
+      }
+
+      return result;
+    }
+
+    /* ==========================================================
+       Map: init, click modes, markers
+       ========================================================== */
+    map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [-99.0, 35.4], // Rough panhandle area as a neutral default
+      zoom: 6
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+    // Click handling to set start/end/waypoints
+    map.on('click', (e) => {
+      const lngLat = e.lngLat;
+      if (clickMode === 'start') {
+        start = lngLat;
+        addOrMoveMarker('start', lngLat);
+      } else if (clickMode === 'end') {
+        end = lngLat;
+        addOrMoveMarker('end', lngLat);
+      } else if (clickMode === 'waypoint') {
+        waypoints.push(lngLat);
+        addOrMoveMarker('waypoint', lngLat);
+      }
+    });
+
+    // Mode buttons
+    document.getElementById('setStartMode').onclick = () => clickMode = 'start';
+    document.getElementById('setEndMode').onclick = () => clickMode = 'end';
+    document.getElementById('addWaypointMode').onclick = () => clickMode = 'waypoint';
+    document.getElementById('clearWaypoints').onclick = () => {
+      waypoints = [];
+      waypointMarkers.forEach(m => m.remove());
+      waypointMarkers = [];
+      removeRouteLayer();
+    };
+
+    // Build route button calls Mapbox Directions API
+    buildRouteBtn.addEventListener('click', async () => {
+      if (!start || !end) {
+        alert('Set start and end on the map first (or include them in the permit).');
+        return;
+      }
+      await drawRoute(start, end, waypoints);
+    });
+
+    // "Edit Steps" lets user directly adjust parsed JSON (quick and dirty)
+    editStepsBtn.addEventListener('click', () => {
+      parsedJson.removeAttribute('readonly');
+      parsedJson.focus();
+    });
+
+    // Helpers: add/move markers
+    function addOrMoveMarker(kind, lngLat) {
+      if (kind === 'start') {
+        if (!startMarker) startMarker = new mapboxgl.Marker({ color: '#2ecc71' });
+        startMarker.setLngLat(lngLat).addTo(map);
+      } else if (kind === 'end') {
+        if (!endMarker) endMarker = new mapboxgl.Marker({ color: '#e74c3c' });
+        endMarker.setLngLat(lngLat).addTo(map);
+      } else if (kind === 'waypoint') {
+        const m = new mapboxgl.Marker();
+        m.setLngLat(lngLat).addTo(map);
+        waypointMarkers.push(m);
+      }
+    }
+
+    // Remove existing route layer if present (so we can redraw)
+    function removeRouteLayer() {
+      if (map.getSource('route')) {
+        map.removeLayer('route');
+        map.removeSource('route');
+      }
+    }
+
+    /* ==========================================================
+       Draw route using Mapbox Directions API with coordinates.
+       NOTE: This uses "driving" profile. For oversize routing you’d
+       supply additional constraints or a different service if needed.
+       ========================================================== */
+    async function drawRoute(start, end, wps = []) {
+      removeRouteLayer();
+
+      const all = [start, ...wps, end]
+        .map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`)
+        .join(';');
+
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${all}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+
+      const res = await fetch(url);
+      const json = await res.json();
+      const route = json?.routes?.[0]?.geometry;
+
+      if (!route) {
+        alert('No route found. Try fewer waypoints or adjust points.');
+        return;
+      }
+
+      map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: route }});
+      map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        paint: { 'line-width': 5, 'line-color': '#111' }
+      });
+
+      // Fit map to route
+      const bounds = new mapboxgl.LngLatBounds();
+      route.coordinates.forEach(c => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 30 });
+    }
+  </script>
+</body>
+</html>
