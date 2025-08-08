@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Basic PWA/iOS meta -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Settings • Map My Permit</title>
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Manifest (optional here, nice to keep consistent) -->
+  <link rel="manifest" href="manifest.json" />
+</head>
+<body>
+  <!-- ===================== HEADER ===================== -->
+  <header class="app-header">
+    <!-- Back button goes to previous page -->
+    <button class="icon-btn" onclick="history.back()" aria-label="Back">
+      <img src="images/back.png" alt="Back" />
+    </button>
+
+    <!-- Title + subtitle -->
+    <div class="app-title-wrap">
+      <h1 class="app-title">Settings</h1>
+      <p class="app-subtitle">Maintenance & Data</p>
+    </div>
+
+    <!-- Home shortcut -->
+    <a class="icon-btn" href="index.html" aria-label="Home">
+      <img src="images/home.png" alt="Home" />
+    </a>
+  </header>
+
+  <!-- ===================== CONTENT ===================== -->
+  <main class="content">
+    <!-- App Info / Status -->
+    <section class="card">
+      <h2 class="section-title">App Status</h2>
+      <div class="row">
+        <div>
+          <div class="small muted">Service Worker</div>
+          <div id="swStatus">Checking…</div>
+        </div>
+        <div>
+          <div class="small muted">Storage Used</div>
+          <div id="storageUsed">Calculating…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Actions -->
+    <section class="card">
+      <h2 class="section-title">Quick Actions</h2>
+      <div class="row">
+        <!-- Reload the current page -->
+        <button class="primary-btn" id="btnRefresh">Refresh App</button>
+
+        <!-- Ask SW to check for a new version -->
+        <button class="ghost-btn" id="btnCheckUpdate">Check for Updates</button>
+      </div>
+    </section>
+
+    <!-- Data Controls -->
+    <section class="card">
+      <h2 class="section-title">Data Controls</h2>
+      <div class="row">
+        <!-- Clear just the saved routes -->
+        <button class="ghost-btn" id="btnClearRoutes">Clear Saved Routes</button>
+
+        <!-- Clear all localStorage (keeps caches/sw) -->
+        <button class="ghost-btn" id="btnClearLocal">Clear All Local Data</button>
+
+        <!-- Clear Cache Storage used by the PWA -->
+        <button class="ghost-btn" id="btnClearCaches">Clear Cache Storage</button>
+      </div>
+    </section>
+
+    <!-- Service Worker -->
+    <section class="card">
+      <h2 class="section-title">Service Worker</h2>
+      <div class="row">
+        <!-- Unregister SW (app still loads online; offline cache gone) -->
+        <button class="ghost-btn" id="btnUnregisterSW">Unregister Service Worker</button>
+      </div>
+    </section>
+
+    <!-- Nuclear Option -->
+    <section class="card">
+      <h2 class="section-title">Reset</h2>
+      <p class="muted small">This removes saved routes, local data, cache storage, and unregisters the service worker. Then reloads the app.</p>
+      <button class="primary-btn" id="btnResetAll">Reset App</button>
+    </section>
+  </main>
+
+  <!-- ===================== BOTTOM NAV ===================== -->
+  <nav class="tabbar">
+    <a class="tab" href="index.html">
+      <img src="images/home.png" alt="" />
+      <span>Home</span>
+    </a>
+    <a class="tab active" href="settings.html">
+      <img src="images/settings.png" alt="" />
+      <span>Settings</span>
+    </a>
+  </nav>
+
+  <!-- ===================== LOGIC ===================== -->
+  <script>
+    // ---------- Helpers ----------
+    // Nicely format bytes
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes)) return '--';
+      const units = ['B','KB','MB','GB','TB'];
+      let i = 0;
+      while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+      return bytes.toFixed(1) + ' ' + units[i];
+    }
+
+    // Estimate storage usage (IndexedDB + Cache + etc. where supported)
+    async function updateStorageUsed() {
+      try {
+        if (navigator.storage && navigator.storage.estimate) {
+          const { usage, quota } = await navigator.storage.estimate();
+          const used = formatBytes(usage || 0);
+          const total = formatBytes(quota || 0);
+          document.getElementById('storageUsed').textContent = `${used} / ${total}`;
+        } else {
+          document.getElementById('storageUsed').textContent = 'Not supported';
+        }
+      } catch {
+        document.getElementById('storageUsed').textContent = 'Unknown';
+      }
+    }
+
+    // Show current Service Worker status
+    async function updateSWStatus() {
+      if (!('serviceWorker' in navigator)) {
+        document.getElementById('swStatus').textContent = 'Not supported';
+        return;
+      }
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) {
+        document.getElementById('swStatus').textContent = 'Not registered';
+        return;
+      }
+      let state = 'Registered';
+      if (reg.installing) state = 'Installing…';
+      else if (reg.waiting) state = 'Update ready (waiting)';
+      else if (reg.active) state = 'Active';
+      document.getElementById('swStatus').textContent = state;
+    }
+
+    // Clear the specific routes key we used in submit.html
+    function clearSavedRoutes() {
+      const KEY = 'mmp_routes';
+      localStorage.removeItem(KEY);
+    }
+
+    // Delete all caches under Cache Storage
+    async function clearAllCaches() {
+      if (!('caches' in window)) return;
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+
+    // Unregister the service worker
+    async function unregisterSW() {
+      if (!('serviceWorker' in navigator)) return false;
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return false;
+      await reg.unregister();
+      return true;
+    }
+
+    // ---------- Wire up buttons ----------
+    document.getElementById('btnRefresh').addEventListener('click', () => {
+      // Reload the page (bypass cache if possible)
+      location.reload(true);
+    });
+
+    document.getElementById('btnCheckUpdate').addEventListener('click', async () => {
+      if (!('serviceWorker' in navigator)) {
+        alert('Service Worker not supported on this browser.');
+        return;
+      }
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) { alert('No Service Worker registered yet.'); return; }
+
+      try {
+        await reg.update(); // Ask the browser to check for an updated SW
+        await updateSWStatus();
+        alert('Checked for updates.');
+      } catch {
+        alert('Could not check for updates.');
+      }
+    });
+
+    document.getElementById('btnClearRoutes').addEventListener('click', () => {
+      if (!confirm('Clear all saved routes?')) return;
+      clearSavedRoutes();
+      alert('Saved routes cleared.');
+    });
+
+    document.getElementById('btnClearLocal').addEventListener('click', () => {
+      if (!confirm('Clear ALL local data (localStorage)?')) return;
+      localStorage.clear();
+      alert('Local data cleared.');
+    });
+
+    document.getElementById('btnClearCaches').addEventListener('click', async () => {
+      if (!confirm('Clear Cache Storage (offline assets)?')) return;
+      await clearAllCaches();
+      alert('Cache Storage cleared.');
+    });
+
+    document.getElementById('btnUnregisterSW').addEventListener('click', async () => {
+      if (!confirm('Unregister the Service Worker? Offline support will stop until you reload.')) return;
+      const ok = await unregisterSW();
+      await updateSWStatus();
+      alert(ok ? 'Service Worker unregistered.' : 'No Service Worker to unregister.');
+    });
+
+    document.getElementById('btnResetAll').addEventListener('click', async () => {
+      if (!confirm('Reset the app? This clears routes, local data, caches, unregisters SW, then reloads.')) return;
+      try {
+        clearSavedRoutes();
+        localStorage.clear();
+        await clearAllCaches();
+        await unregisterSW();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        location.reload();
+      }
+    });
+
+    // ---------- Init ----------
+    updateStorageUsed();
+    updateSWStatus();
+  </script>
+</body>
+</html>
