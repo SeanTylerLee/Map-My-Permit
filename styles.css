@@ -55,7 +55,7 @@ body.has-bg::before {
   align-items:center; 
   justify-content:space-between;
   padding: 10px 12px; 
-  background: rgba(240,240,245,0.9); 
+  background: rgba(240,240,245,0.60); 
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--tint-2);
 }
