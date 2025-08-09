@@ -22,13 +22,31 @@ body {
 
 /* Fixed background for the whole page (stays in place on scroll) */
 html, body { height: 100%; }
+
 body.has-bg {
   background-image: url('images/background.jpg');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  background-attachment: fixed;           /* keep it still */
-  background-color: var(--bg);            /* fallback while loading */
+  background-color: var(--bg);
+  background-attachment: fixed; /* works on desktop/Android */
+  position: relative;           /* needed for ::before stacking */
+}
+
+/* iOS Safari workaround: fixed pseudo-layer */
+body.has-bg::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: inherit;
+  background-position: inherit;
+  background-repeat: inherit;
+  background-size: inherit;
+  background-color: inherit;
+  z-index: -1;
 }
 
 /* ===== Header ===== */
