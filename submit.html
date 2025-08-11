@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- iOS/PWA meta -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Submit Permit • Map My Permit</title>
+
+  <!-- Styles -->
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Manifest -->
+  <link rel="manifest" href="manifest.json" />
 
   <!-- Mapbox -->
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
@@ -15,18 +21,21 @@
   <!-- Tesseract OCR -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
-<body>
-  <!-- Header -->
+<body class="has-bg">
+  <!-- ===== App Header ===== -->
   <header class="app-header">
     <img class="app-logo" src="images/logo.png" alt="Logo" />
-    <h1 class="app-title">Submit Permit</h1>
-    <a class="icon-btn" href="index.html" aria-label="Home">
+    <div class="app-title-wrap">
+      <h1 class="app-title">Submit Permit</h1>
+      <p class="app-subtitle">Upload and auto-parse</p>
+    </div>
+    <a class="icon-btn" href="index.html">
       <img src="images/home.png" alt="Home" />
     </a>
   </header>
 
+  <!-- ===== Upload Permit Card ===== -->
   <main class="content">
-    <!-- Upload Section -->
     <section class="card">
       <h2 class="section-title">Upload or Take Photo</h2>
       <input id="fileInput" type="file" accept="image/*" />
@@ -38,56 +47,57 @@
       </div>
     </section>
 
-    <!-- OCR Results -->
+    <!-- ===== OCR Output ===== -->
     <section class="card">
       <h2 class="section-title">Detected Text</h2>
       <textarea id="ocrText" class="mono" rows="8" readonly placeholder="OCR results will appear here…"></textarea>
     </section>
 
-    <!-- Parsed Permit Steps -->
+    <!-- ===== Parsed Directions ===== -->
     <section class="card">
       <h2 class="section-title">Parsed Route (Permit Only)</h2>
-      <div class="row small">
-        <label class="chip">Start: <span id="startLabel" class="bold">--</span></label>
-        <label class="chip">End: <span id="endLabel" class="bold">--</span></label>
+      <div class="chip-row small">
+        <div class="chip">Start: <span id="startLabel">--</span></div>
+        <div class="chip">End: <span id="endLabel">--</span></div>
       </div>
       <textarea id="parsedBox" class="mono" rows="8" readonly></textarea>
       <div class="row">
         <button id="editParsedBtn" class="ghost-btn">Edit JSON</button>
-        <button id="buildBtn" class="primary-btn" disabled>Build Route (Permit)</button>
-        <button id="saveBtn" class="ghost-btn" disabled>Save</button>
+        <button id="buildBtn" class="primary-btn" disabled>Build Route</button>
       </div>
       <details class="small" style="margin-top:.5rem;">
-        <summary>Waypoint debug</summary>
+        <summary>Waypoint Debug</summary>
         <ul id="wpDebug" class="small"></ul>
       </details>
     </section>
 
-    <!-- Map & Directions -->
+    <!-- ===== Map ===== -->
     <section class="card">
       <h2 class="section-title">Map & Steps</h2>
       <div id="map" class="map"></div>
       <ol id="steps" class="small" style="margin-top:10px;padding-left:18px;"></ol>
-      <div class="chip-row">
-        <button id="pickStart" class="chip">Pick Start</button>
-        <button id="pickEnd" class="chip">Pick End</button>
-      </div>
     </section>
   </main>
 
-  <!-- Spacer -->
-  <div style="height: 96px;"></div>
+  <div style="height:80px"></div>
 
-  <!-- Bottom Nav -->
+  <!-- ===== Bottom Nav ===== -->
   <nav class="tabbar">
-    <a class="tab" href="index.html"><img src="images/home.png" alt=""><span>Home</span></a>
-    <a class="tab" href="routes.html"><img src="images/settings.png" alt=""><span>Routes</span></a>
+    <a class="tab" href="index.html">
+      <img src="images/home.png" alt="Home" />
+    </a>
+    <a class="tab active" href="submit.html">
+      <img src="images/submit.png" alt="Submit" />
+    </a>
+    <a class="tab" href="settings.html">
+      <img src="images/settings.png" alt="Settings" />
+    </a>
   </nav>
 
 <script>
 mapboxgl.accessToken = 'YOUR_MAPBOX_TOKEN';
 
-/* DOM Elements */
+/* DOM refs */
 const fileInput   = document.getElementById('fileInput');
 const preview     = document.getElementById('preview');
 const statusEl    = document.getElementById('status');
@@ -100,14 +110,13 @@ const startLabel  = document.getElementById('startLabel');
 const endLabel    = document.getElementById('endLabel');
 
 const buildBtn    = document.getElementById('buildBtn');
-const saveBtn     = document.getElementById('saveBtn');
 const editParsedBtn = document.getElementById('editParsedBtn');
 
 const stepsEl     = document.getElementById('steps');
 const wpDebug     = document.getElementById('wpDebug');
 
-let start=null, end=null, map, startMarker, endMarker;
-map = new mapboxgl.Map({ container:'map', style:'mapbox://styles/mapbox/streets-v12', center:[-104.99,41.14], zoom:6 });
+let start=null, end=null, map;
+map = new mapboxgl.Map({ container:'map', style:'mapbox://styles/mapbox/streets-v12', center:[-105, 42], zoom:6 });
 map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
 /* Upload → OCR → Parse */
@@ -125,14 +134,14 @@ clearBtn.addEventListener('click', resetAll);
 
 async function runPipeline(file){
   try{
-    setStatus('Running OCR…', true);
+    setStatus('Running OCR…');
     const { data } = await Tesseract.recognize(file,'eng',{
-      logger:m=>{ if(m.status && m.progress!=null){ setStatus(`${m.status.replace(/_/g,' ')} ${Math.round(m.progress*100)}%`, true); } }
+      logger:m=>{ if(m.status && m.progress!=null){ setStatus(`${m.status.replace(/_/g,' ')} ${Math.round(m.progress*100)}%`); } }
     });
     const text=(data?.text||'').trim();
     ocrText.value=text;
 
-    setStatus('Parsing permit…', true);
+    setStatus('Parsing permit…');
     const parsed = parseWy(text);
     parsedBox.value = JSON.stringify(parsed, null, 2);
 
@@ -143,10 +152,10 @@ async function runPipeline(file){
     end   = parsed.destination ? await geocode(parsed.destination) : null;
 
     buildBtn.disabled = !(start && end);
-    setStatus(start && end ? 'Ready to build permit route.' : 'Set both start and end.', false);
+    setStatus(start && end ? 'Ready to build permit route.' : 'Set both start and end.');
   } catch(e){
     console.error(e);
-    setStatus('Error: Try a clearer photo.', false);
+    setStatus('Error: Try a clearer photo.');
   } finally {
     reRunBtn.disabled = false;
   }
@@ -154,7 +163,7 @@ async function runPipeline(file){
 
 /* Wyoming Permit Parser */
 function parseWy(text){
-  const out={format:'wy_permit', origin:null, destination:null, rows:[]};
+  const out={origin:null, destination:null, rows:[]};
   const o=text.match(/Origin:\s*(.+)/i); if(o) out.origin=o[1].trim();
   const d=text.match(/Final Destination:\s*(.+)/i); if(d) out.destination=d[1].trim();
   const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
@@ -176,24 +185,22 @@ buildBtn.addEventListener('click', async ()=>{
   if (!parsed) return alert('Invalid parsed JSON.');
   if (!start || !end) return alert('Set start and end first.');
 
+  wpDebug.innerHTML='';
   const waypoints = [];
-  for (let i=0; i<parsed.rows.length; i++){
-    const step = parsed.rows[i];
-    if(step.route && step.directions){
-      const label = `${step.route} ${step.directions}`;
-      const coord = await geocode(label);
-      if(coord){
-        waypoints.push(coord);
-        addWpDebug(label, true);
-      } else {
-        addWpDebug(label, false);
-      }
+  for (let step of parsed.rows){
+    const label = `${step.route} ${step.directions}`;
+    const coord = await geocode(label);
+    if(coord){
+      waypoints.push(coord);
+      addWpDebug(label, true);
+    } else {
+      addWpDebug(label, false);
     }
   }
   await drawRoute(start, waypoints, end);
 });
 
-/* Debug list */
+/* Debug helper */
 function addWpDebug(label, ok){
   const li = document.createElement('li');
   li.textContent = (ok ? '✓ ' : '✕ ') + label;
@@ -201,7 +208,7 @@ function addWpDebug(label, ok){
   wpDebug.appendChild(li);
 }
 
-/* Geocode helper */
+/* Geocode */
 async function geocode(q){
   const url=`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?limit=1&country=US&access_token=${mapboxgl.accessToken}`;
   try{ const r=await fetch(url); const j=await r.json();
@@ -227,16 +234,14 @@ async function drawRoute(start, wps, end){
     li.textContent = s.maneuver?.instruction || '';
     stepsEl.appendChild(li);
   }));
-  saveBtn.disabled = false;
 }
 
-/* Misc */
+/* Misc helpers */
 function resetAll(){
   fileInput.value=''; preview.removeAttribute('src'); ocrText.value=''; parsedBox.value='';
   startLabel.textContent=endLabel.textContent='--'; wpDebug.innerHTML=''; stepsEl.innerHTML='';
-  if(startMarker) startMarker.remove(); if(endMarker) endMarker.remove();
-  buildBtn.disabled = true; saveBtn.disabled = true;
-  setStatus('Select a clear photo of the permit.', false);
+  buildBtn.disabled = true;
+  setStatus('Select a clear photo of the permit.');
 }
 function setStatus(msg){ statusEl.textContent = msg; }
 editParsedBtn.addEventListener('click', ()=>{
