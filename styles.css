@@ -337,3 +337,29 @@ body.full-screen { margin: 0; background: #f2f2f7; }
 .popup-sub{ font-size: 12px; color: #6b7280; margin-bottom: 6px; }
 .popup-row{ display:flex; gap:6px; }
 .chip.danger { border-color:#ff3b30; color:#ff3b30; }
+
+
+/* ===== Stacked Button Layout ===== */
+.stacked-layout {
+  display: flex;
+  gap: 12px;
+}
+
+.left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.right-col {
+  flex: 1;
+  display: flex;
+}
+
+.full-height {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+}

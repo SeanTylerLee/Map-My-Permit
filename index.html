@@ -37,24 +37,30 @@
   
     <div style="height: 50px;"></div>
 
-  <!-- ===== Main actions ===== -->
-  <main class="hero">
-    <!-- Two pill buttons -->
-    <div class="hero-actions">
+<!-- ===== Main actions ===== -->
+<main class="hero">
+  <div class="hero-actions stacked-layout">
+    <!-- Left column: first + third button stacked -->
+    <div class="left-col">
       <a class="pill-btn" href="submit.html">
         <img src="images/submit.png" alt="" />
         <span>Submit Permits</span>
-      </a>
-      <a class="pill-btn" href="routes.html">
-        <img src="images/saved.png" alt="" />
-        <span>Saved Routes</span>
       </a>
       <a class="pill-btn" href="submit-route-builder.html">
         <img src="images/builder.png" alt="" />
         <span>Route Builder</span>
       </a>
     </div>
-  </main>
+
+    <!-- Right column: single tall button -->
+    <div class="right-col">
+      <a class="pill-btn full-height" href="routes.html">
+        <img src="images/saved.png" alt="" />
+        <span>Saved Routes</span>
+      </a>
+    </div>
+  </div>
+</main>
 
   <!-- ===== Bottom Nav ===== -->
   <nav class="tabbar">
