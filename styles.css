@@ -363,3 +363,75 @@ body.full-screen { margin: 0; background: #f2f2f7; }
   justify-content: center;
   flex: 1;
 }
+
+
+/* ===== Build Routes UI ===== */
+html, body { height: 100%; }
+body.full-screen { margin: 0; background: var(--bg, #f2f2f7); }
+.map-full { position: fixed; inset: 0; }
+
+/* Top header like Apple Maps */
+.maps-header{
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+  height: 56px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; background: rgba(242,242,247,.95); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--tint-2, #c7c7cc);
+}
+.hdr-title{ font-weight: 700; }
+.hdr-btn{ border: 1px solid var(--tint-2,#c7c7cc); background:#fff; border-radius: 12px; padding: 6px 10px; }
+.hdr-btn.go{ background:#0a84ff; color:#fff; border-color:#0a84ff; }
+.hdr-btn:disabled{ opacity:.5 }
+
+/* Right-side tools */
+.tool-stack{
+  position: fixed; right: 10px; top: 70px; z-index: 25;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.tool{ border:1px solid var(--tint-2,#c7c7cc); background:#fff; border-radius:12px; padding:8px 10px; }
+.tool-active{ outline: 2px solid #0a84ff; }
+
+/* Bottom toolbar */
+.maps-tabbar{
+  position: fixed; left:0; right:0; bottom:0; z-index:26;
+  height: 58px; display:flex; justify-content:space-around; align-items:center;
+  background: rgba(242,242,247,.96); border-top:1px solid var(--tint-2,#c7c7cc);
+}
+.tab-item{ background:transparent; border:0; font-size:12px; }
+
+/* Blue "me" dot */
+.me-dot{
+  width: 14px; height: 14px; border-radius: 50%;
+  background:#0a84ff; box-shadow:0 0 0 4px rgba(10,132,255,.25);
+}
+
+/* Numbered waypoint pin (dark pill) */
+.wp-badge-pin{
+  min-width: 26px; height: 26px; border-radius: 13px;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; background:#111; border:2px solid #fff; font-weight:700; font-size:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,.25);
+}
+
+/* Route summary bubble */
+.route-bubble{
+  position: fixed; z-index: 24; right: 70px; top: 120px;
+  background:#fff; border:1px solid var(--tint-2,#c7c7cc); border-radius:12px; padding:8px 12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+
+/* Slide-up info panel */
+.info-panel{
+  position: fixed; left: 10px; bottom: 70px; z-index: 24; width: 280px;
+  background: rgba(255,255,255,.96); backdrop-filter: blur(8px);
+  border:1px solid var(--tint-2,#c7c7cc); border-radius:14px; padding:10px;
+}
+.panel-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.panel-title{ font-weight:700; }
+.point-list{ list-style:none; padding:0; margin:0; max-height: 30vh; overflow:auto; }
+.point-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #e5e7eb; }
+.point-actions{ display:flex; gap:6px; }
+
+/* Mapbox popups tuned to style */
+.mapboxgl-popup-content{ border-radius:12px; }
+.popup-title{ font-weight:700; margin-bottom:4px; }
+.popup-sub{ font-size:12px; color:#6b7280; margin-bottom:6px; }

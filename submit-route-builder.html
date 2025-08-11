@@ -6,394 +6,406 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Route Builder • Map My Permit</title>
+  <title>Build Routes • Map My Permit</title>
 
-  <!-- Shared styles (add the snippet below to your styles.css) -->
+  <!-- Your shared styles (we add a few classes at the end of this message) -->
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Mapbox GL JS -->
+  <!-- Mapbox GL -->
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 </head>
 <body class="full-screen">
-  <!-- ===== Navigation banner (shows next instruction) ===== -->
-  <div id="navBanner" class="nav-banner" hidden>
-    <div id="navPrimary" class="nav-primary">Starting navigation…</div>
-    <div id="navSecondary" class="nav-secondary"></div>
-  </div>
+  <!-- ===== Header bar (title + GO) ===== -->
+  <header class="maps-header">
+    <!-- Back / share placeholder -->
+    <button class="hdr-btn" id="hdrBack" title="Back">〈</button>
 
-  <!-- ===== Map ===== -->
+    <!-- Title in the middle -->
+    <div class="hdr-title" id="routeTitle">Build Route</div>
+
+    <!-- GO button starts nav -->
+    <button class="hdr-btn go" id="goBtn" disabled>Go ⟩</button>
+  </header>
+
+  <!-- ===== Full-screen Map ===== -->
   <div id="map" class="map-full" aria-label="Route builder map"></div>
 
-  <!-- ===== Floating map controls ===== -->
-  <div class="floating-controls">
-    <button id="undoBtn" class="chip" title="Undo last point">Undo</button>
-    <button id="clearBtn" class="chip" title="Clear all">Clear</button>
-    <button id="resumeBtn" class="chip" title="Resume follow" hidden>Resume</button>
+  <!-- ===== Distance/Time callout bubble ===== -->
+  <div id="routeBubble" class="route-bubble" hidden>
+    <div id="bubbleDistance">--</div>
+    <div id="bubbleTime" class="muted small">--</div>
   </div>
 
-  <!-- ===== Bottom action bar ===== -->
-  <div class="bottom-bar">
-    <div class="mode-note">
-      <strong>Tip:</strong> After you set <em>Start</em>, taps default to <em>Waypoint</em>.
-    </div>
-    <div class="button-row">
-      <button id="navigateBtn" class="primary-btn" disabled>Navigate</button>
-      <button id="stopBtn" class="ghost-btn" disabled>Stop</button>
-    </div>
+  <!-- ===== Right-side tool stack ===== -->
+  <div class="tool-stack">
+    <button class="tool" id="toolDraw" title="Add points by tapping map">Draw</button>
+    <button class="tool" id="toolInfo" title="Points list">Info</button>
+    <button class="tool" id="toolLocate" title="Center on me">Location</button>
+    <button class="tool" id="toolCharts" title="(stub)">Charts</button>
   </div>
 
-  <!-- ===== Waypoint side sheet (edit, reorder, delete) ===== -->
-  <aside class="wp-sheet" id="wpSheet" aria-label="Waypoint list">
-    <div class="wp-sheet-header">
-      <div class="wp-title">Points</div>
-      <button id="toggleSheet" class="chip">Hide</button>
+  <!-- ===== Bottom toolbar (visual only for now) ===== -->
+  <nav class="maps-tabbar">
+    <button class="tab-item" id="tabRoute">Route</button>
+    <button class="tab-item" id="tabSearch">Search</button>
+    <button class="tab-item" id="tabFavs">Favorites</button>
+    <button class="tab-item" id="tabTurns">Turns</button>
+    <button class="tab-item" id="tabMore">More</button>
+  </nav>
+
+  <!-- ===== Slide-up info panel (edit/reorder/delete) ===== -->
+  <aside class="info-panel" id="infoPanel" hidden>
+    <div class="panel-header">
+      <div class="panel-title">Route Points</div>
+      <button class="chip" id="panelClose">Close</button>
     </div>
-    <ul id="wpList" class="wp-list"></ul>
+    <ol id="pointList" class="point-list"></ol>
+    <div class="row" style="margin-top:8px;">
+      <button class="ghost-btn" id="btnClear">Clear</button>
+      <button class="ghost-btn" id="btnUndo">Undo</button>
+    </div>
   </aside>
-  <button id="showSheet" class="fab chip" title="Show points">Points</button>
-
-  <!-- ===== Click Prompt (appears where you tap the map) ===== -->
-  <div id="tapPrompt" class="tap-prompt" hidden>
-    <div class="prompt-title">Add point as…</div>
-    <div class="prompt-row">
-      <button id="asStart" class="chip">Start</button>
-      <button id="asWaypoint" class="chip">Waypoint</button>
-      <button id="asEnd" class="chip">End</button>
-    </div>
-    <button id="cancelPrompt" class="ghost-btn small-btn">Cancel</button>
-  </div>
 
 <script>
-/* ===================== CONFIG ===================== */
+/* ============================================================
+   CONFIG (keep your token)
+============================================================ */
 mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
 
-/* ===================== MAP INIT ===================== */
+/* ============================================================
+   MAP INIT
+============================================================ */
 const map = new mapboxgl.Map({
   container: 'map',
-  style: 'mapbox://styles/mapbox/navigation-day-v1',
-  center: [-105.5, 42.8],  // WY-ish center
+  style: 'mapbox://styles/mapbox/navigation-day-v1', // nav-friendly style
+  center: [-99.5, 36.7],  // OK/KS area like your screenshot
   zoom: 6
 });
 map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+window.addEventListener('resize', () => map.resize());
 
-/* Resize safety for orientation/app switching */
-window.addEventListener('resize', ()=> map.resize());
-document.addEventListener('visibilitychange', ()=> { if (!document.hidden) map.resize(); });
+/* ============================================================
+   STATE
+============================================================ */
+let start = null, end = null;          // {lng,lat}
+let wps = [];                          // waypoint array
+let mkStart = null, mkEnd = null;      // markers
+let mkWps = [];                        // waypoint markers
+let drawing = false;                   // draw mode toggle
+let routeFeature = null;               // drawn route feature
+let steps = [];                        // steps from Directions API
+let stepIdx = 0;                       // index into steps
+let userMarker = null;                 // blue "me" dot
+let watchId = null;                    // geolocation watch id
+let follow = true;                     // camera follow while navigating
 
-/* ===================== STATE ===================== */
-let start = null, end = null;            // {lng, lat}
-let waypoints = [];                       // [{lng,lat,name?}]
-let markers = { start:null, end:null, wps:[] }; // Mapbox markers
-let autoMode = 'start';                   // default prompt mode
-let pendingClick = null;                  // last clicked lngLat
-let routeGeoJSON = null;                  // drawn route
-let watchId = null;                       // geolocation watch
-let userMarker = null;                    // live-location marker
-let currentSteps = [];                    // Mapbox steps
-let stepIndex = 0;                        // pointer
-let followPaused = false;                 // camera follow
-let followPauseTimer = null;              // resume debounce
+/* ============================================================
+   DOM
+============================================================ */
+const goBtn          = document.getElementById('goBtn');
+const toolDraw       = document.getElementById('toolDraw');
+const toolInfo       = document.getElementById('toolInfo');
+const toolLocate     = document.getElementById('toolLocate');
 
-/* UI refs */
-const tapPrompt = document.getElementById('tapPrompt');
-const asStartBtn = document.getElementById('asStart');
-const asWaypointBtn = document.getElementById('asWaypoint');
-const asEndBtn = document.getElementById('asEnd');
-const cancelPrompt = document.getElementById('cancelPrompt');
+const infoPanel      = document.getElementById('infoPanel');
+const panelClose     = document.getElementById('panelClose');
+const pointList      = document.getElementById('pointList');
+const btnClear       = document.getElementById('btnClear');
+const btnUndo        = document.getElementById('btnUndo');
 
-const navigateBtn = document.getElementById('navigateBtn');
-const stopBtn = document.getElementById('stopBtn');
-const undoBtn = document.getElementById('undoBtn');
-const clearBtn = document.getElementById('clearBtn');
-const resumeBtn = document.getElementById('resumeBtn');
+const bubble         = document.getElementById('routeBubble');
+const bubbleDistance = document.getElementById('bubbleDistance');
+const bubbleTime     = document.getElementById('bubbleTime');
 
-const navBanner = document.getElementById('navBanner');
-const navPrimary = document.getElementById('navPrimary');
-const navSecondary = document.getElementById('navSecondary');
-
-const wpSheet = document.getElementById('wpSheet');
-const wpList = document.getElementById('wpList');
-const toggleSheet = document.getElementById('toggleSheet');
-const showSheet = document.getElementById('showSheet');
-
-/* ===================== TAP → PROMPT ===================== */
+/* ============================================================
+   MAP TAPS (Draw mode)
+   - Tap = Start if none, else Waypoint
+   - Long-press (contextmenu) = End
+============================================================ */
 map.on('click', (e) => {
-  pendingClick = e.lngLat;
-  const p = map.project(pendingClick);
-  tapPrompt.style.left = `${p.x}px`;
-  tapPrompt.style.top  = `${p.y}px`;
-  tapPrompt.hidden = false;
-
-  [asStartBtn, asWaypointBtn, asEndBtn].forEach(b=>b.classList.remove('chip-active'));
-  if (autoMode==='start') asStartBtn.classList.add('chip-active');
-  else asWaypointBtn.classList.add('chip-active');
+  if (!drawing) return;
+  if (!start) setStart(e.lngLat);
+  else addWaypoint(e.lngLat);
+  updateList(); updateGoState(); maybeBuildRoute();
 });
 
-/* ===================== PROMPT ACTIONS ===================== */
-asStartBtn.onclick = () => { if(pendingClick){ setStart(pendingClick); autoMode='waypoint'; closePrompt(); } };
-asWaypointBtn.onclick = () => { if(pendingClick){ addWaypoint(pendingClick); closePrompt(); } };
-asEndBtn.onclick   = () => { if(pendingClick){ setEnd(pendingClick); closePrompt(); } };
-cancelPrompt.onclick = closePrompt;
-function closePrompt(){ tapPrompt.hidden=true; pendingClick=null; refreshNavState(); }
+map.on('contextmenu', (e) => {
+  if (!drawing) return;
+  setEnd(e.lngLat);
+  updateList(); updateGoState(); maybeBuildRoute();
+});
 
-/* ===================== ADD/SET HELPERS ===================== */
+/* Pause follow if the user pans/zooms */
+map.on('dragstart', ()=> { follow = false; });
+map.on('zoomstart', ()=> { follow = false; });
+
+/* ============================================================
+   MARKERS (start / waypoint / end)
+============================================================ */
 function setStart(ll){
-  start = { ...ll, name:'Start' };
-  if (!markers.start) markers.start = new mapboxgl.Marker({ color:'#2ecc71' });
-  markers.start.setLngLat(ll).addTo(map).setPopup(makePopup('Start'));
-  upsertList();
+  start = ll;
+  if (!mkStart) mkStart = new mapboxgl.Marker({ color:'#1fba4a' });
+  mkStart.setLngLat(ll).addTo(map).setPopup(new mapboxgl.Popup({offset:12}).setText('Start'));
 }
-function addWaypoint(ll){
-  const n = waypoints.length+1;
-  const wp = { ...ll, name:`Waypoint ${n}` };
-  waypoints.push(wp);
 
+function addWaypoint(ll){
+  wps.push(ll);
+  const n = wps.length;
+
+  // custom numbered badge
   const el = document.createElement('div');
-  el.className = 'wp-dot';
+  el.className = 'wp-badge-pin';
   el.textContent = n;
 
   const m = new mapboxgl.Marker(el).setLngLat(ll).addTo(map);
-  m.setPopup(makeWpPopup(wp, n));
-  markers.wps.push(m);
 
-  upsertList();
+  // popup with live distance + delete
+  const pid = `d_${n}`;
+  const html = `
+    <div class="popup-title">Waypoint ${n}</div>
+    <div class="popup-sub" id="${pid}">Distance: --</div>
+    <button class="chip danger" onclick="window.__delWp(${n-1})">Delete</button>`;
+  m.setPopup(new mapboxgl.Popup({offset:12}).setHTML(html));
+  m.getElement().addEventListener('click', ()=> updateDistanceLabel(pid, ll));
+
+  mkWps.push(m);
+  window.__delWp = deleteWaypoint; // expose for popup button
 }
+
 function setEnd(ll){
-  end = { ...ll, name:'End' };
-  if (!markers.end) markers.end = new mapboxgl.Marker({ color:'#e74c3c' });
-  markers.end.setLngLat(ll).addTo(map).setPopup(makePopup('End'));
-  upsertList();
-}
-function renumberWpMarkers(){
-  markers.wps.forEach((m, i) => { m.getElement().textContent = (i+1); });
+  end = ll;
+  if (!mkEnd) mkEnd = new mapboxgl.Marker({ color:'#ff3b30' });
+  mkEnd.setLngLat(ll).addTo(map).setPopup(new mapboxgl.Popup({offset:12}).setText('End'));
 }
 
-/* ===================== POPUPS (distance, actions) ===================== */
-function makePopup(title){
-  const div = document.createElement('div');
-  div.className = 'popup-wrap';
-  const h = document.createElement('div');
-  h.className = 'popup-title'; h.textContent = title;
-  div.appendChild(h);
-  return new mapboxgl.Popup({offset:12}).setDOMContent(div);
-}
-function makeWpPopup(wp, idx){
-  const div = document.createElement('div'); div.className='popup-wrap';
-  const t = document.createElement('div'); t.className='popup-title'; t.textContent = `Waypoint ${idx}`;
-  const d = document.createElement('div'); d.className='popup-sub'; d.textContent = 'Distance: --';
+function renumberWpMarkers(){ mkWps.forEach((m,i)=> m.getElement().textContent = (i+1)); }
 
-  const row = document.createElement('div'); row.className='popup-row';
-  const btnDel = document.createElement('button'); btnDel.className='chip danger'; btnDel.textContent='Delete';
-  btnDel.onclick = () => { deleteWaypoint(idx-1); };
-
-  row.appendChild(btnDel);
-  div.appendChild(t); div.appendChild(d); div.appendChild(row);
-
-  // Update distance from live GPS (fallback from start)
-  updateDistanceLabel(d, wp);
-
-  return new mapboxgl.Popup({offset:12}).setDOMContent(div);
-}
-function updateDistanceLabel(labelEl, targetLL){
-  const here = currentPosition || start;
-  if (!here || !targetLL) { labelEl.textContent='Distance: --'; return; }
-  const meters = haversine(here, targetLL);
-  labelEl.textContent = `Distance: ${formatDistance(meters)}`;
-}
-
-/* ===================== WAYPOINT LIST (edit/reorder/delete) ===================== */
-function upsertList(){
-  wpList.innerHTML = '';
+/* ============================================================
+   INFO PANEL (list + reorder + delete)
+============================================================ */
+function updateList(){
+  pointList.innerHTML = '';
 
   // Start
-  listItem('S', start,  null, null, false);
+  pointList.appendChild(rowStatic(start ? 'Start' : 'Start: --'));
 
   // Waypoints
-  waypoints.forEach((wp, i)=>{
-    listItem(String(i+1), wp,
-      ()=> moveWp(i, -1),
-      ()=> moveWp(i, 1),
-      true,
-      ()=> deleteWaypoint(i)
-    );
+  wps.forEach((pt,i)=>{
+    pointList.appendChild(rowWp(i));
   });
 
   // End
-  listItem('E', end, null, null, false);
-
-  // Enable nav only when start & end present
-  refreshNavState();
+  pointList.appendChild(rowStatic(end ? 'End' : 'End: --'));
 }
 
-function listItem(tag, point, onUp, onDown, editable, onDelete){
+function rowStatic(text){
   const li = document.createElement('li');
-  li.className = 'wp-item';
-
-  const left = document.createElement('div');
-  left.className='wp-left';
-  const badge = document.createElement('div'); badge.className='wp-badge'; badge.textContent=tag;
-  const name = document.createElement('div'); name.className='wp-name'; name.textContent= point ? (point.name||'') : '--';
-  left.appendChild(badge); left.appendChild(name);
-
-  const right = document.createElement('div');
-  right.className='wp-right';
-  if (editable){
-    const up = document.createElement('button'); up.className='chip'; up.textContent='↑'; up.onclick=()=>onUp && onUp();
-    const down = document.createElement('button'); down.className='chip'; down.textContent='↓'; down.onclick=()=>onDown && onDown();
-    const del = document.createElement('button'); del.className='chip danger'; del.textContent='Delete'; del.onclick=()=>onDelete && onDelete();
-    right.appendChild(up); right.appendChild(down); right.appendChild(del);
-  }
-
-  li.appendChild(left); li.appendChild(right);
-  wpList.appendChild(li);
+  li.textContent = text;
+  return li;
 }
 
-function moveWp(i, dir){
-  const j = i+dir;
-  if (j<0 || j>=waypoints.length) return;
-  [waypoints[i], waypoints[j]] = [waypoints[j], waypoints[i]];
-  // swap markers as well
-  [markers.wps[i], markers.wps[j]] = [markers.wps[j], markers.wps[i]];
+function rowWp(i){
+  const li = document.createElement('li');
+  li.className = 'point-row';
+  li.innerHTML = `
+    <span>Waypoint ${i+1}</span>
+    <span class="point-actions">
+      <button class="chip" onclick="window.__moveWp(${i},-1)">↑</button>
+      <button class="chip" onclick="window.__moveWp(${i},1)">↓</button>
+      <button class="chip danger" onclick="window.__delWp(${i})">Delete</button>
+    </span>`;
+  window.__moveWp = moveWaypoint;
+  window.__delWp  = deleteWaypoint;
+  return li;
+}
+
+function moveWaypoint(i, dir){
+  const j = i + dir;
+  if (j < 0 || j >= wps.length) return;
+  [wps[i], wps[j]] = [wps[j], wps[i]];
+  [mkWps[i], mkWps[j]] = [mkWps[j], mkWps[i]];
   renumberWpMarkers();
-  upsertList();
+  updateList(); maybeBuildRoute();
 }
 
 function deleteWaypoint(i){
-  waypoints.splice(i,1);
-  const m = markers.wps.splice(i,1)[0];
+  const m = mkWps.splice(i,1)[0];
   if (m) m.remove();
+  wps.splice(i,1);
   renumberWpMarkers();
-  upsertList();
+  updateList(); maybeBuildRoute();
 }
 
-/* ===================== UNDO / CLEAR ===================== */
-undoBtn.onclick = () => {
-  if (end) { markers.end.remove(); markers.end=null; end=null; }
-  else if (waypoints.length){ deleteWaypoint(waypoints.length-1); }
-  else if (start){ markers.start.remove(); markers.start=null; start=null; autoMode='start'; }
-  refreshNavState();
-};
-clearBtn.onclick = () => {
-  removeRoute(); stopNavigation();
-  if (markers.start){ markers.start.remove(); markers.start=null; }
-  if (markers.end){ markers.end.remove(); markers.end=null; }
-  markers.wps.forEach(m=>m.remove()); markers.wps=[];
-  start=end=null; waypoints=[]; autoMode='start';
-  upsertList();
-};
+/* Panel controls */
+toolInfo.addEventListener('click', ()=>{ infoPanel.hidden = !infoPanel.hidden; updateList(); });
+panelClose.addEventListener('click', ()=> infoPanel.hidden = true);
 
-/* ===================== NAV BUTTON ENABLE ===================== */
-function refreshNavState(){ navigateBtn.disabled = !(start && end); }
+/* ============================================================
+   TOOLS: Draw toggle / Locate / Clear / Undo
+============================================================ */
+toolDraw.addEventListener('click', ()=>{
+  drawing = !drawing;
+  toolDraw.classList.toggle('tool-active', drawing);
+  toolDraw.textContent = drawing ? 'Drawing…' : 'Draw';
+});
+toolLocate.addEventListener('click', ()=>{
+  follow = true;
+  if (userMarker && userMarker.getLngLat()){
+    map.easeTo({ center: userMarker.getLngLat(), duration: 600, zoom: Math.max(14, map.getZoom()) });
+  }
+});
 
-/* ===================== NAVIGATE ===================== */
-navigateBtn.onclick = async () => {
-  const seq = [start, ...waypoints, end];
-  const coords = seq.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&steps=true&voice_units=imperial&access_token=${mapboxgl.accessToken}`;
+btnUndo.addEventListener('click', undoLast);
+btnClear.addEventListener('click', clearAll);
 
-  try{
-    const res = await fetch(url);
-    const json = await res.json();
-    const route = json?.routes?.[0];
-    if (!route) { alert('No route found.'); return; }
+function undoLast(){
+  if (end){ mkEnd.remove(); mkEnd=null; end=null; }
+  else if (wps.length){ deleteWaypoint(wps.length-1); }
+  else if (start){ mkStart.remove(); mkStart=null; start=null; }
+  updateList(); updateGoState(); maybeBuildRoute();
+}
 
-    drawRoute(route.geometry);
-    fitToRoute(route.geometry);
-    currentSteps = (route.legs||[]).flatMap(l=>l.steps||[]);
-    stepIndex = 0; stopBtn.disabled=false;
-    showBanner('Navigation started', nextInstruction());
-    speak('Navigation started');
-
-    startNavigation();
-  }catch(e){ console.error(e); alert('Could not start navigation.'); }
-};
-
-stopBtn.onclick = ()=> { stopNavigation(); showBanner('', ''); };
-
-/* Draw/remove route line */
-function drawRoute(geometry){
+function clearAll(){
+  stopNav();
   removeRoute();
-  routeGeoJSON = { type:'Feature', geometry };
-  map.addSource('route',{type:'geojson', data:routeGeoJSON});
-  map.addLayer({ id:'route', type:'line', source:'route', paint:{ 'line-width':6, 'line-color':'#0a84ff' }});
+  if (mkStart){ mkStart.remove(); mkStart=null; }
+  if (mkEnd){ mkEnd.remove(); mkEnd=null; }
+  mkWps.forEach(m=>m.remove()); mkWps=[];
+  start=end=null; wps=[];
+  bubble.hidden = true;
+  updateList(); updateGoState();
 }
+
+/* ============================================================
+   ROUTE BUILD + SUMMARY BUBBLE
+============================================================ */
+function updateGoState(){ goBtn.disabled = !(start && end); }
+
+async function maybeBuildRoute(){
+  bubble.hidden = true;
+  removeRoute();
+  if (!(start && end)) return;
+
+  // Build the coordinates string for Directions API
+  const all = [start, ...wps, end]
+    .map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${all}?geometries=geojson&overview=full&steps=true&annotations=duration,distance&access_token=${mapboxgl.accessToken}`;
+
+  const res = await fetch(url);
+  const json = await res.json();
+  const route = json?.routes?.[0];
+  if (!route) return;
+
+  // Draw route polyline
+  routeFeature = { type:'Feature', geometry: route.geometry };
+  map.addSource('route', { type:'geojson', data: routeFeature });
+  map.addLayer({
+    id:'route',
+    type:'line',
+    source:'route',
+    paint:{ 'line-width': 6, 'line-color': '#0a84ff' }
+  });
+
+  // Fit bounds to the route
+  const b = new mapboxgl.LngLatBounds();
+  route.geometry.coordinates.forEach(c => b.extend(c));
+  map.fitBounds(b, { padding: 60, duration: 500 });
+
+  // Summary bubble (distance/time)
+  const mi = Math.round(route.distance / 1609.34);
+  const mins = Math.round(route.duration / 60);
+  bubbleDistance.textContent = `${mi} mi`;
+  bubbleTime.textContent = mins >= 60
+    ? `${Math.floor(mins/60)} hrs, ${mins%60} min`
+    : `${mins} min`;
+  bubble.hidden = false;
+
+  // Save steps for navigation
+  steps = (route.legs||[]).flatMap(l=>l.steps||[]);
+  stepIdx = 0;
+}
+
+/* Remove route layer/source if present */
 function removeRoute(){
   if (map.getSource('route')){ map.removeLayer('route'); map.removeSource('route'); }
-  routeGeoJSON=null;
-}
-function fitToRoute(geometry){
-  const b=new mapboxgl.LngLatBounds(); geometry.coordinates.forEach(c=>b.extend(c));
-  map.fitBounds(b,{padding:60, duration:600});
+  routeFeature = null;
 }
 
-/* ===================== LIVE NAV ===================== */
-let currentPosition = null;
+/* ============================================================
+   NAVIGATION (voice + banner + follow camera)
+============================================================ */
+goBtn.addEventListener('click', ()=>{
+  if (!start || !end) return;
+  follow = true;
+  startNav();
+});
 
-function startNavigation(){
-  // create user dot
+function startNav(){
+  // Ensure user marker exists
   if (!userMarker){
-    const dot=document.createElement('div'); dot.className='me-dot';
-    userMarker=new mapboxgl.Marker(dot).setLngLat(start).addTo(map);
+    const dot = document.createElement('div');
+    dot.className = 'me-dot';
+    userMarker = new mapboxgl.Marker(dot).setLngLat(start).addTo(map);
   }
-  // watch GPS
+  // Begin GPS watch
   if (navigator.geolocation){
-    watchId = navigator.geolocation.watchPosition(onPos, onPosError, { enableHighAccuracy:true, maximumAge:2000, timeout:10000 });
+    watchId = navigator.geolocation.watchPosition(onPos, ()=>{}, { enableHighAccuracy:true, maximumAge:2000, timeout:10000 });
   }
-
-  // pause follow when user interacts; resume button appears
-  const pause = ()=>{
-    followPaused = true;
-    resumeBtn.hidden = false;
-    if (followPauseTimer) clearTimeout(followPauseTimer);
-    followPauseTimer = setTimeout(()=>{ /* keep paused until user taps resume */ }, 10000);
-  };
-  map.on('dragstart', pause); map.on('zoomstart', pause); map.on('rotatestart', pause);
+  speak('Navigation started');
 }
-function stopNavigation(){
-  if (watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
-  if (userMarker){ userMarker.remove(); userMarker=null; }
-  currentSteps=[]; stepIndex=0; stopBtn.disabled=true; navBanner.hidden=true;
-  followPaused=false; resumeBtn.hidden=true;
-}
-resumeBtn.onclick = ()=>{ followPaused=false; resumeBtn.hidden=true; if (currentPosition) map.easeTo({center:currentPosition, duration:600, zoom:Math.max(map.getZoom(), 14)}); };
 
+function stopNav(){
+  if (watchId != null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+}
+
+/* GPS callback: update marker, advance steps, keep banner fresh */
 function onPos(pos){
-  currentPosition = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-  if (userMarker) userMarker.setLngLat(currentPosition);
+  const here = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+  userMarker.setLngLat(here);
 
-  const step = currentSteps[stepIndex];
-  if (!step){ showBanner('Arrived',''); speak('Arrived.'); stopNavigation(); return; }
+  const step = steps[stepIdx];
+  if (!step){ speak('Arrived'); stopNav(); return; }
 
   const target = { lng: step.maneuver.location[0], lat: step.maneuver.location[1] };
-  const meters = haversine(currentPosition, target);
+  const meters = haversine(here, target);
 
-  navSecondary.textContent = `${formatDistance(meters)} to next turn`;
+  bubbleDistance.textContent = formatDistance(meters);
+  bubbleTime.textContent = step.maneuver.instruction || 'Continue';
 
   if (meters < 35){
-    stepIndex++;
-    if (currentSteps[stepIndex]) { showBanner(nextInstruction(), ''); speak(currentSteps[stepIndex].maneuver.instruction); }
-    else { showBanner('Arrived',''); speak('Arrived.'); stopNavigation(); }
+    stepIdx++;
+    if (steps[stepIdx]) speak(steps[stepIdx].maneuver.instruction);
+    else { speak('Arrived'); stopNav(); }
   }
 
-  if (!followPaused){
-    map.easeTo({ center: currentPosition, duration: 700, zoom: Math.max(14, map.getZoom()) });
+  if (follow){
+    map.easeTo({ center: here, duration: 700, zoom: Math.max(14, map.getZoom()) });
   }
 }
 
-function onPosError(err){ console.warn('Geolocation error', err); }
+/* Waypoint popup distance label (from me → fallback to start) */
+function updateDistanceLabel(elId, target){
+  const src = (userMarker && userMarker.getLngLat()) || start;
+  if (!src) return;
+  const d = haversine({lng:src.lng, lat:src.lat}, target);
+  const el = document.getElementById(elId);
+  if (el) el.textContent = `Distance: ${formatDistance(d)}`;
+}
 
-/* ===================== UI HELPERS ===================== */
-function showBanner(p,s){ navPrimary.textContent=p||''; navSecondary.textContent=s||''; navBanner.hidden=!(p||s); }
-function nextInstruction(){ return currentSteps[stepIndex]?.maneuver?.instruction || 'Proceed'; }
-function speak(text){ try{ const u=new SpeechSynthesisUtterance(text); window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);}catch{} }
+/* ============================================================
+   UTILITIES
+============================================================ */
 function haversine(a,b){
-  const toRad=d=>d*Math.PI/180, R=6371000;
-  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
-  const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
-  return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2));
+  const toRad = d => d * Math.PI / 180, R = 6371000;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s1 = Math.sin(dLat/2), s2 = Math.sin(dLng/2);
+  const A = s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
+  return 2 * R * Math.asin(Math.sqrt(A));
 }
 function formatDistance(m){ return (m>=1609.34) ? `${(m/1609.34).toFixed(1)} mi` : `${Math.round(m*3.28084)} ft`; }
+function speak(t){ try{ const u=new SpeechSynthesisUtterance(t); window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);}catch{} }
 </script>
 </body>
 </html>
