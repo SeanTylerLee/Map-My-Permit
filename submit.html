@@ -4,10 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Submit Permit • Map My Permit</title>
-
   <link rel="stylesheet" href="styles.css" />
 
   <!-- Mapbox -->
@@ -18,9 +16,9 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
-  <!-- Top bar -->
+  <!-- Header -->
   <header class="app-header">
-      <img class="app-logo" src="images/logo.png" alt="Logo" />
+    <img class="app-logo" src="images/logo.png" alt="Logo" />
     <h1 class="app-title">Submit Permit</h1>
     <a class="icon-btn" href="index.html" aria-label="Home">
       <img src="images/home.png" alt="Home" />
@@ -28,7 +26,7 @@
   </header>
 
   <main class="content">
-    <!-- Upload -->
+    <!-- Upload Section -->
     <section class="card">
       <h2 class="section-title">Upload or Take Photo</h2>
       <input id="fileInput" type="file" accept="image/*" />
@@ -40,13 +38,13 @@
       </div>
     </section>
 
-    <!-- OCR text -->
+    <!-- OCR Results -->
     <section class="card">
       <h2 class="section-title">Detected Text</h2>
       <textarea id="ocrText" class="mono" rows="8" readonly placeholder="OCR results will appear here…"></textarea>
     </section>
 
-    <!-- Parsed (from permit only) -->
+    <!-- Parsed Permit Steps -->
     <section class="card">
       <h2 class="section-title">Parsed Route (Permit Only)</h2>
       <div class="row small">
@@ -65,7 +63,7 @@
       </details>
     </section>
 
-    <!-- Map + steps -->
+    <!-- Map & Directions -->
     <section class="card">
       <h2 class="section-title">Map & Steps</h2>
       <div id="map" class="map"></div>
@@ -77,20 +75,19 @@
     </section>
   </main>
 
-  <!-- Spacer so tabbar doesn’t cover content -->
+  <!-- Spacer -->
   <div style="height: 96px;"></div>
 
-  <!-- Bottom nav -->
+  <!-- Bottom Nav -->
   <nav class="tabbar">
     <a class="tab" href="index.html"><img src="images/home.png" alt=""><span>Home</span></a>
     <a class="tab" href="routes.html"><img src="images/settings.png" alt=""><span>Routes</span></a>
   </nav>
 
 <script>
-/* ================= CONFIG ================= */
-mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbmxlZTkyIiwiYSI6ImNtZTAyeG0wbzAwamgybHE2cmwzenJtM2cifQ.DE8FeoDvc3EzuyR5uPopzA';
+mapboxgl.accessToken = 'YOUR_MAPBOX_TOKEN';
 
-/* ================= DOM ==================== */
+/* DOM Elements */
 const fileInput   = document.getElementById('fileInput');
 const preview     = document.getElementById('preview');
 const statusEl    = document.getElementById('status');
@@ -109,12 +106,11 @@ const editParsedBtn = document.getElementById('editParsedBtn');
 const stepsEl     = document.getElementById('steps');
 const wpDebug     = document.getElementById('wpDebug');
 
-/* ================= MAP ==================== */
 let start=null, end=null, map, startMarker, endMarker;
 map = new mapboxgl.Map({ container:'map', style:'mapbox://styles/mapbox/streets-v12', center:[-104.99,41.14], zoom:6 });
 map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-/* ========== Upload → OCR → Parse (permit) ========== */
+/* Upload → OCR → Parse */
 fileInput.addEventListener('change', async ()=>{
   const f=fileInput.files?.[0]; if(!f) return;
   preview.src = URL.createObjectURL(f);
@@ -130,126 +126,34 @@ clearBtn.addEventListener('click', resetAll);
 async function runPipeline(file){
   try{
     setStatus('Running OCR…', true);
-    // OCR
     const { data } = await Tesseract.recognize(file,'eng',{
       logger:m=>{ if(m.status && m.progress!=null){ setStatus(`${m.status.replace(/_/g,' ')} ${Math.round(m.progress*100)}%`, true); } }
     });
     const text=(data?.text||'').trim();
     ocrText.value=text;
 
-    // Parse (Wyoming table first, then simple START/END + bullets)
     setStatus('Parsing permit…', true);
-    const parsed = parseWy(text) || parseSimple(text);
+    const parsed = parseWy(text);
     parsedBox.value = JSON.stringify(parsed, null, 2);
 
-    const s = (parsed.origin||parsed.start||parsed.startText||'').trim();
-    const d = (parsed.destination||parsed.end||parsed.endText||'').trim();
-    startLabel.textContent = s || '--';
-    endLabel.textContent   = d || '--';
+    startLabel.textContent = parsed.origin || '--';
+    endLabel.textContent   = parsed.destination || '--';
 
-    // We will only build a route using steps from the permit.
-    // If start or end is missing, prompt user to tap map.
-    start = s ? await geocode(s) : null;
-    end   = d ? await geocode(d) : null;
+    start = parsed.origin ? await geocode(parsed.origin) : null;
+    end   = parsed.destination ? await geocode(parsed.destination) : null;
 
-    if (!start) {
-      setStatus('Tap the map to set START (permit start not found).', false);
-      await requirePoint('start');
-    } else { place('start', start); }
-
-    if (!end) {
-      setStatus('Tap the map to set END (permit end not found).', false);
-      await requirePoint('end');
-    } else { place('end', end); }
-
-    // Build waypoint list from permit rows only
     buildBtn.disabled = !(start && end);
-    saveBtn.disabled  = true;
     setStatus(start && end ? 'Ready to build permit route.' : 'Set both start and end.', false);
   } catch(e){
     console.error(e);
-    setStatus('Something went wrong. Try a clearer photo.', false);
+    setStatus('Error: Try a clearer photo.', false);
   } finally {
     reRunBtn.disabled = false;
   }
 }
 
-/* ========== Build route using ONLY permit steps ========== */
-buildBtn.addEventListener('click', async ()=>{
-  const parsed = safeJSON(parsedBox.value);
-  if (!parsed) return alert('Invalid parsed JSON.');
-  if (!start || !end) return alert('Set start and end first.');
-
-  setStatus('Geocoding permit waypoints…', true);
-  const waypoints = await buildPermitWaypoints(parsed);
-  await drawRouteFromPermit(start, waypoints, end);
-});
-
-/* ========== Save (stores what we used/skipped too) ========== */
-saveBtn.addEventListener('click', ()=>{
-  try{
-    const record = {
-      id: 'r_'+Math.random().toString(36).slice(2),
-      name: prompt('Route name:', 'Permit Route') || 'Permit Route',
-      createdAt: new Date().toISOString(),
-      start, end,
-      ocrText: ocrText.value,
-      parsed: safeJSON(parsedBox.value),
-      usedWaypoints: lastUsedWaypoints,
-      skippedWaypoints: lastSkippedWaypoints
-    };
-    const KEY='mmp_routes';
-    const list = JSON.parse(localStorage.getItem(KEY) || '[]');
-    list.unshift(record);
-    localStorage.setItem(KEY, JSON.stringify(list));
-    alert('Saved! Check Routes.');
-  } catch(e){ console.error(e); alert('Could not save.'); }
-});
-
-/* ================== Helpers / Logic ================== */
-let lastUsedWaypoints = [];
-let lastSkippedWaypoints = [];
-
-function resetAll(){
-  fileInput.value='';
-  preview.removeAttribute('src');
-  ocrText.value=''; parsedBox.value='';
-  startLabel.textContent=endLabel.textContent='--';
-  start=end=null;
-  if (startMarker) startMarker.remove();
-  if (endMarker) endMarker.remove();
-  clearRouteLayer();
-  stepsEl.innerHTML='';
-  wpDebug.innerHTML='';
-  buildBtn.disabled = true;
-  saveBtn.disabled  = true;
-  setStatus('Select a clear photo of the permit.', false);
-}
-
-function setStatus(msg, busy){
-  statusEl.textContent = msg;
-  // you could add a spinner class toggle here if desired
-}
-
-function safeJSON(s){ try{ return JSON.parse(s||'{}'); }catch{ return null; } }
-
-/* Parse: simple START/END and bullet steps */
-function parseSimple(text){
-  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const out={format:'simple', start:null, end:null, steps:[]};
-  for(const l of lines){
-    if(/^START:/i.test(l)) out.start=l.replace(/^START:/i,'').trim();
-    else if(/^END:/i.test(l)) out.end=l.replace(/^END:/i,'').trim();
-    else if(/^Origin:/i.test(l)) out.start=l.replace(/^Origin:/i,'').trim();
-    else if(/^Final Destination:/i.test(l)) out.end=l.replace(/^Final Destination:/i,'').trim();
-    else if(/^[-•\d]/.test(l)) out.steps.push({text:l.replace(/^[-•]\s?/,'').trim()});
-  }
-  return out;
-}
-
-/* Parse: Wyoming-style table */
+/* Wyoming Permit Parser */
 function parseWy(text){
-  if (!/Final Destination:/i.test(text)) return null;
   const out={format:'wy_permit', origin:null, destination:null, rows:[]};
   const o=text.match(/Origin:\s*(.+)/i); if(o) out.origin=o[1].trim();
   const d=text.match(/Final Destination:\s*(.+)/i); if(d) out.destination=d[1].trim();
@@ -257,79 +161,47 @@ function parseWy(text){
   const h=lines.findIndex(l=>/Miles/i.test(l)&&/Route/i.test(l)&&/Directions/i.test(l));
   if(h===-1) return out;
   for(let i=h+1;i<lines.length;i++){
-    const line=lines[i];
-    if(/Final Destination/i.test(line)) break;
-    const m=line.match(/^(\d+(\.\d+)?)/); if(!m) continue;
-    const miles=parseFloat(m[1]);
-    const rest=line.replace(/^(\d+(\.\d+)?)/,'').trim();
-    // heuristic columns split (ROUTE   DIRECTIONS)
-    const parts=rest.split(/\s{2,}/);
-    let route='', directions='';
-    if(parts.length>=2){ route=parts[0].trim(); directions=parts.slice(1).join('  ').trim(); }
-    else { const soft=rest.split(/\s+/); route=soft.shift()||''; directions=soft.join(' '); }
-    out.rows.push({ miles, route, directions });
+    if(/Final Destination/i.test(lines[i])) break;
+    const cols=lines[i].split(/\s{2,}/);
+    if(cols.length>=3){
+      out.rows.push({ miles:cols[0], route:cols[1], directions:cols[2] });
+    }
   }
   return out;
 }
 
-/* Build waypoints ONLY from permit steps.
-   Strategy:
-   - WY table: create junction waypoints by pairing consecutive routes: "ROUTE[i] & ROUTE[i+1]"
-   - Simple list: try to extract numbered road tokens and pair them similarly.
-   - Geocode each; keep successes, skip failures. */
-async function buildPermitWaypoints(parsed){
-  lastUsedWaypoints = [];
-  lastSkippedWaypoints = [];
-  wpDebug.innerHTML='';
+/* Build Route */
+buildBtn.addEventListener('click', async ()=>{
+  const parsed = JSON.parse(parsedBox.value);
+  if (!parsed) return alert('Invalid parsed JSON.');
+  if (!start || !end) return alert('Set start and end first.');
 
-  let labels = [];
-  if (parsed.format === 'wy_permit') {
-    const routes = parsed.rows.map(r => (r.route||'').trim()).filter(Boolean);
-    for (let i=0; i<routes.length-1; i++){
-      if (routes[i] !== routes[i+1]) labels.push(`${routes[i]} & ${routes[i+1]}`);
-    }
-  } else {
-    // try to pull road tokens out of step text
-    const roadRX = /(I[-\s]?\d+|US[-\s]?\d+|U\.S\.\s?\d+|WY[-\s]?\d+|SR[-\s]?\d+|Hwy\s?\d+|Highway\s?\d+)/ig;
-    const tokens = [];
-    (parsed.steps||[]).forEach(s=>{
-      const found = (s.text||'').match(roadRX);
-      if (found) tokens.push(...found.map(x=>x.replace(/\s+/g,' ').toUpperCase()));
-    });
-    // unique consecutive pairs
-    for (let i=0;i<tokens.length-1;i++){
-      const a=tokens[i], b=tokens[i+1];
-      if (a!==b) labels.push(`${a} & ${b}`);
-    }
-  }
-
-  // De-dup while preserving order
-  labels = labels.filter((v,i,a)=>a.indexOf(v)===i);
-
-  // Geocode each label; keep good ones
   const waypoints = [];
-  for (const label of labels){
-    const coord = await geocodeIntersectionLabel(label);
-    if (coord){
-      waypoints.push(coord);
-      lastUsedWaypoints.push(label);
-      addWpDebug(label, true);
-    } else {
-      lastSkippedWaypoints.push(label);
-      addWpDebug(label, false);
+  for (let i=0; i<parsed.rows.length; i++){
+    const step = parsed.rows[i];
+    if(step.route && step.directions){
+      const label = `${step.route} ${step.directions}`;
+      const coord = await geocode(label);
+      if(coord){
+        waypoints.push(coord);
+        addWpDebug(label, true);
+      } else {
+        addWpDebug(label, false);
+      }
     }
   }
-  return waypoints;
-}
+  await drawRoute(start, waypoints, end);
+});
 
+/* Debug list */
 function addWpDebug(label, ok){
   const li = document.createElement('li');
   li.textContent = (ok ? '✓ ' : '✕ ') + label;
-  li.style.color = ok ? 'var(--text, #111)' : '#b00020';
+  li.style.color = ok ? 'black' : 'red';
   wpDebug.appendChild(li);
 }
 
-/* Geocoding */
+/* Geocode helper */
 async function geocode(q){
   const url=`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?limit=1&country=US&access_token=${mapboxgl.accessToken}`;
   try{ const r=await fetch(url); const j=await r.json();
@@ -337,83 +209,38 @@ async function geocode(q){
   }catch{ return null; }
 }
 
-/* Try to geocode "A & B" style junctions */
-async function geocodeIntersectionLabel(label){
-  // Try as-is, then with "intersection"
-  const tries = [
-    label,
-    `Intersection of ${label}, United States`
-  ];
-  for (const q of tries){
-    const c = await geocode(q);
-    if (c) return c;
-  }
-  return null;
-}
-
-/* Require user to pick start/end on map if missing */
-function requirePoint(which){
-  return new Promise(resolve=>{
-    setStatus(`Tap the map to set ${which.toUpperCase()}.`, false);
-    const handler = (e)=>{
-      const p = e.lngLat;
-      if (which==='start'){ start=p; place('start', p); }
-      else { end=p; place('end', p); }
-      map.off('click', handler);
-      resolve();
-    };
-    map.on('click', handler);
-  });
-}
-
-/* Draw route strictly: start -> (permit waypoints) -> end */
-async function drawRouteFromPermit(start, wps, end){
-  clearRouteLayer();
+/* Draw route */
+async function drawRoute(start, wps, end){
+  if (map.getSource('route')){ map.removeLayer('route'); map.removeSource('route'); }
   stepsEl.innerHTML='';
-
-  // Build coords string using only our sequence
   const seq = [start, ...(wps||[]), end];
-  if (seq.length < 2){ alert('Not enough points.'); return; }
-
   const coords = seq.map(p=>`${p.lng},${p.lat}`).join(';');
   const url=`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
   const r=await fetch(url); const j=await r.json();
-  const route=j?.routes?.[0]; const geom=route?.geometry; if(!geom){ alert('No route found with permit steps.'); return; }
-
-  map.addSource('route',{type:'geojson', data:{type:'Feature', geometry:geom}});
+  const route=j?.routes?.[0];
+  if(!route) return alert('No route found.');
+  map.addSource('route',{type:'geojson', data:{type:'Feature', geometry:route.geometry}});
   map.addLayer({id:'route', type:'line', source:'route', paint:{'line-width':5,'line-color':'#0a84ff'}});
-  const b=new mapboxgl.LngLatBounds(); geom.coordinates.forEach(c=>b.extend(c)); map.fitBounds(b,{padding:30});
-
-  // steps from all legs
-  const allSteps = (route.legs||[]).flatMap(l=>l.steps||[]);
-  allSteps.forEach((s,i)=>{
+  const b=new mapboxgl.LngLatBounds(); route.geometry.coordinates.forEach(c=>b.extend(c)); map.fitBounds(b,{padding:30});
+  route.legs.forEach(l=>l.steps.forEach(s=>{
     const li=document.createElement('li');
-    li.textContent = s.maneuver?.instruction || `Step ${i+1}`;
+    li.textContent = s.maneuver?.instruction || '';
     stepsEl.appendChild(li);
-  });
-
+  }));
   saveBtn.disabled = false;
-  setStatus('Route built from permit-only steps.', false);
 }
 
-/* Map helpers */
-function place(kind, p){
-  if (kind==='start'){
-    if(!startMarker) startMarker=new mapboxgl.Marker({color:'#2ecc71'});
-    startMarker.setLngLat(p).addTo(map);
-  } else {
-    if(!endMarker) endMarker=new mapboxgl.Marker({color:'#e74c3c'});
-    endMarker.setLngLat(p).addTo(map);
-  }
+/* Misc */
+function resetAll(){
+  fileInput.value=''; preview.removeAttribute('src'); ocrText.value=''; parsedBox.value='';
+  startLabel.textContent=endLabel.textContent='--'; wpDebug.innerHTML=''; stepsEl.innerHTML='';
+  if(startMarker) startMarker.remove(); if(endMarker) endMarker.remove();
+  buildBtn.disabled = true; saveBtn.disabled = true;
+  setStatus('Select a clear photo of the permit.', false);
 }
-function clearRouteLayer(){
-  if (map.getSource('route')){ map.removeLayer('route'); map.removeSource('route'); }
-}
-
-/* Edit JSON toggle (advanced) */
+function setStatus(msg){ statusEl.textContent = msg; }
 editParsedBtn.addEventListener('click', ()=>{
-  const ro=parsedBox.hasAttribute('readonly');
-  if(ro){ parsedBox.removeAttribute('readonly'); parsedBox.focus(); editParsedBtn.textContent='Lock JSON'; }
+  if(parsedBox.hasAttribute('readonly')){ parsedBox.removeAttribute('readonly'); editParsedBtn.textContent='Lock JSON'; }
   else { parsedBox.setAttribute('readonly','readonly'); editParsedBtn.textContent='Edit JSON'; }
 });
 </script>
