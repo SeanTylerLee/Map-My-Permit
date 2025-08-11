@@ -233,3 +233,24 @@ body.full-screen { margin: 0; background: #f2f2f7; }
 .nav-primary { font-weight: 700; }
 .nav-secondary { font-size: 12px; color: #6b7280; }
 
+
+
+
+
+
+
+
+/* Make the map fill the screen */
+html, body { height: 100%; }
+body.full-screen { margin: 0; background: #f2f2f7; }
+
+/* Full-bleed map container */
+.map-full {
+  position: fixed;            /* pin to the viewport */
+  inset: 0;                   /* top/right/bottom/left = 0 */
+}
+
+/* Optional: if you prefer non-fixed, ensure a real height */
+@supports (height: 100dvh) {
+  .map-full { position: relative; height: 100dvh; }
+}
